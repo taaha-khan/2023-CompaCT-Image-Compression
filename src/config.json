@@ -1,6 +1,15 @@
 {
 
-	"magic": "hxrf",
-	"extension": "hxr"
+	"magic": "qoif",
+	"extension": "qoi",
+
+	"channels": 3,
+
+	"EOF": [0, 0, 0, 0, 0, 0, 0, 1],
+
+	"verbose": true,
+
+	"zlib_compression": true,
+	"zlib_compression_level": 9
 
 }

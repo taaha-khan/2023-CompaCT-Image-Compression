@@ -24,42 +24,38 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
 
+from PIL import Image
+import json
+import zlib
+
 # from codec.curve import GeneralizedHilbertCurve
 
-import argparse
-from dataclasses import dataclass, field
-from typing import Dict, Optional
+class Utils:
 
-from PIL import Image
+	CHANNELS = 3
 
-# chunk tags
-TAG_INDEX = 0x00  # 00xxxxxx
-TAG_DIFF = 0x40  # 01xxxxxx
-TAG_LUMA = 0x80  # 10xxxxxx
-TAG_RUN = 0xc0  # 11xxxxxx
-TAG_RGB = 0xfe  # 11111111
-TAG_MASK = 0xc0  # 11000000
+	# chunk tags
+	TAG_INDEX = 0x00  # 00xxxxxx
+	TAG_DIFF = 0x40  # 01xxxxxx
+	TAG_LUMA = 0x80  # 10xxxxxx
+	TAG_RUN = 0xc0  # 11xxxxxx
+	TAG_RGB = 0xfe  # 11111111 # FIXME
+	TAG_MASK = 0xc0  # 11000000
 
-
-MAGIC = ord('q') << 24 | ord('o') << 16 | ord('i') << 8 | ord('f')
-
-@dataclass
 class Pixel:
-	px_bytes: bytearray = field(init=False)
 
-	def __post_init__(self):
+	def __init__(self):
 		self.px_bytes = bytearray((0, 0, 0))
 
 	def update(self, values: bytes) -> None:
-		n_channels = len(values)
-		if n_channels != 3:
-			raise ValueError('a tuple of 3 RGB values should be provided')
-
-		self.px_bytes[0:n_channels] = values
+		self.px_bytes[0:3] = values
 
 	def __str__(self) -> str:
 		r, g, b = self.px_bytes
-		return f'R: {r} G: {g} B: {b}'
+		return f'[R = {r}, G = {g}, B = {b}]'
+
+	def __eq__(self, other):
+		return self.px_bytes == other.px_bytes
 
 	@property
 	def bytes(self) -> bytes:
@@ -84,271 +80,252 @@ class Pixel:
 
 class ByteWriter:
 
-	def __init__(self, size: int):
-		self.bytes = bytearray(size)
-		self.write_pos = 0
+	def __init__(self):
+		self.bytes = bytearray()
 
 	def write(self, byte: int):
-		self.bytes[self.write_pos] = (byte % 256)
-		self.write_pos += 1
+		self.bytes.append(byte % 256)
+	
+	def write_4_bytes(self, value):
+		self.write((0xff000000 & value) >> 24)
+		self.write((0x00ff0000 & value) >> 16)
+		self.write((0x0000ff00 & value) >> 8)
+		self.write((0x000000ff & value))
 
 	def output(self):
-		return bytes(self.bytes[0 : self.write_pos])
+		return bytes(self.bytes)
 
 
 class ByteReader:
+
+	# FIXME: Adapts based on configured EOF
 	padding_len = 8
 
 	def __init__(self, data: bytes):
 		self.bytes = data
 		self.read_pos = 0
-		# might be off by 1
-		self.max_pos = len(self.bytes) - self.padding_len
+		self.max_pos = len(self.bytes) - self.padding_len - 1
 
-	def read(self) -> Optional[int]:
-		if self.read_pos >= self.max_pos:
+	def read(self):
+
+		if self.read_pos > self.max_pos:
 			return None
 
 		out = self.bytes[self.read_pos]
 		self.read_pos += 1
 		return out
 
+	def read_4_bytes(self):
+		data = [self.read() for _ in range(4)]
+		b1, b2, b3, b4 = data
+		return b1 << 24 | b2 << 16 | b3 << 8 | b4
+
 	def output(self):
 		return bytes(self.bytes[0:self.read_pos])
 
-
-def write_32_bits(value: int, writer: ByteWriter) -> None:
-	writer.write((0xff000000 & value) >> 24)
-	writer.write((0x00ff0000 & value) >> 16)
-	writer.write((0x0000ff00 & value) >> 8)
-	writer.write((0x000000ff & value))
-
-
-def read_32_bits(reader: ByteReader) -> int:
-	data = [reader.read() for _ in range(4)]
-	b1, b2, b3, b4 = data
-	return b1 << 24 | b2 << 16 | b3 << 8 | b4
-
-
-def write_end(writer: ByteWriter) -> None:
-	for _ in range(7):
-		writer.write(0)
-	writer.write(1)
-
-
-def encode_img(img: Image.Image, srgb: bool, out_path: str) -> None:
-	width, height = img.size
-	
-	img_bytes = img.tobytes()
-	output = encode(img_bytes, width, height, srgb)
-
-	with open(out_path, 'wb') as fout:
-		fout.write(output)
-
-
-def decode_to_img(img_bytes: bytes, out_path: str) -> None:
-	out = decode(img_bytes)
-
-	size = (out['width'], out['height'])
-	img = Image.frombuffer(out['channels'], size, bytes(out['bytes']), 'raw')
-	img.save(out_path, 'png')
-
-
-def encode(img_bytes: bytes, width: int, height: int, srgb: bool):
-	total_size = height * width
-	channels = 3
-	pixel_data = (
-		img_bytes[i:i + channels] for i in range(0, len(img_bytes), channels)
-	)
-	max_n_bytes = 14 + total_size * 4 + 8
-	writer = ByteWriter(max_n_bytes)
-	hash_array = [Pixel() for _ in range(64)]
-
-	# write header
-	write_32_bits(MAGIC, writer)
-	write_32_bits(width, writer)
-	write_32_bits(height, writer)
-	writer.write(3) # N_CHANNELS
-	writer.write(0 if srgb else 1)
-
-	# encode pixels
-	run = 0
-	prev_px_value = Pixel()
-	px_value = Pixel()
-	for i, px in enumerate(pixel_data):
-		prev_px_value.update(px_value.bytes)
-		px_value.update(px)
-
-		if px_value == prev_px_value:
-			run += 1
-			if run == 62 or (i + 1) >= total_size:
-				writer.write(TAG_RUN | (run - 1))
-				run = 0
-			continue
-
-		if run:
-			writer.write(TAG_RUN | (run - 1))
-			run = 0
-
-		index_pos = px_value.hash
-		if hash_array[index_pos] == px_value:
-			writer.write(TAG_INDEX | index_pos)
-			continue
-
-		hash_array[index_pos].update(px_value.bytes)
-
-		vr = px_value.red - prev_px_value.red
-		vg = px_value.green - prev_px_value.green
-		vb = px_value.blue - prev_px_value.blue
-
-		vg_r = vr - vg
-		vg_b = vb - vg
-
-		if all(-3 < x < 2 for x in (vr, vg, vb)):
-			writer.write(TAG_DIFF | (vr + 2) << 4 | (vg + 2) << 2 | (vb + 2))
-			continue
-
-		elif all(-9 < x < 8 for x in (vg_r, vg_b)) and -33 < vg < 32:
-			writer.write(TAG_LUMA | (vg + 32))
-			writer.write((vg_r + 8) << 4 | (vg_b + 8))
-			continue
-
-		writer.write(TAG_RGB)
-		writer.write(px_value.red)
-		writer.write(px_value.green)
-		writer.write(px_value.blue)
-
-	write_end(writer)
-	return writer.output()
-
-
-def decode(file_bytes: bytes) -> Dict:
-	reader = ByteReader(file_bytes)
-	header_magic = read_32_bits(reader)
-	
-	if header_magic != MAGIC:
-		raise ValueError('provided image does not contain proper header')
-
-	width = read_32_bits(reader)
-	height = read_32_bits(reader)
-	channels = reader.read()
-	colorspace = reader.read()
-
-	hash_array = [Pixel() for _ in range(64)]
-	out_size = width * height * channels
-	pixel_data = bytearray(out_size)
-	px_value = Pixel()
-	run = 0
-	for i in range(-channels, out_size, channels):
-		index_pos = px_value.hash
-		hash_array[index_pos].update(px_value.bytes)
-		if i >= 0:
-			pixel_data[i:i + channels] = px_value.bytes
-
-		if run > 0:
-			run -= 1
-			continue
-
-		b1 = reader.read()
-		if b1 is None:
-			break
-
-		if b1 == TAG_RGB:
-			new_value = bytes((reader.read() for _ in range(3)))
-			px_value.update(new_value)
-			continue
-
-		if (b1 & TAG_MASK) == TAG_INDEX:
-			px_value.update(hash_array[b1].bytes)
-			continue
-
-		if (b1 & TAG_MASK) == TAG_DIFF:
-			red = (px_value.red + ((b1 >> 4) & 0x03) - 2) % 256
-			green = (px_value.green + ((b1 >> 2) & 0x03) - 2) % 256
-			blue = (px_value.blue + (b1 & 0x03) - 2) % 256
-			px_value.update(bytes((red, green, blue)))
-			continue
-
-		if (b1 & TAG_MASK) == TAG_LUMA:
-			b2 = reader.read()
-			vg = ((b1 & 0x3f) % 256) - 32
-			red = (px_value.red + vg - 8 + ((b2 >> 4) & 0x0f)) % 256
-			green = (px_value.green + vg) % 256
-			blue = (px_value.blue + vg - 8 + (b2 & 0x0f)) % 256
-			px_value.update(bytes((red, green, blue)))
-			continue
-
-		if (b1 & TAG_MASK) == TAG_RUN:
-			run = (b1 & 0x3f)
-
-	out = {
-		'width': width, 'height': height,
-		'channels': 'RGB',
-		'colorspace': colorspace
-	}
-
-	out['bytes'] = pixel_data
-
-	return out
-
-
-def replace_extension(path: str, extension: str) -> str:
-	old_extension = path.split('.')[-1]
-	new_path = path.replace(old_extension, extension)
-	return new_path
-
-
-def main():
-	parser = argparse.ArgumentParser()
-	parser.add_argument('-e', '--encode', action='store_true', default=False)
-	parser.add_argument('-d', '--decode', action='store_true', default=False)
-	parser.add_argument(
-		'-f', '--file-path', type=str,
-		help='path to image file to be encoded or decoded', required=True)
-	args = parser.parse_args()
-
-	if args.encode:
-		try:
-			img = Image.open(args.file_path)
-		except Exception as exc:
-			print(f'image load failed: {exc}')
-			return
-
-		out_path = replace_extension(args.file_path, 'qoi')
-		encode_img(img, out_path, out_path)
-
-	if args.decode:
-		with open(args.file_path, 'rb') as encoded:
-			file_bytes = encoded.read()
-
-		out_path = replace_extension(args.file_path, 'png')
-		decode_to_img(file_bytes, out_path)
-
-
-if __name__ == '__main__':
-	main()
-
-
-"""
 class Encoder:
 
-	def __init__(self, image_filepath, config):
+	def __init__(self, config, image, out_path):
 
-		self.filepath = image_filepath
 		self.config = config
 
-		self.image = None
+		self.image = image
+		self.image_bytes = image.tobytes()
 
+		self.width, self.height = image.size
+		self.total_size = self.width * self.height
 
+		self.writer = ByteWriter()
+		self.out_path = out_path
+
+		self.hash_array = [Pixel() for _ in range(64)]
+
+		self.info = {
+			'cache': 0,
+			'diff': 0,
+			'luma': 0,
+			'run': 0,
+			'full': 0
+		}
+
+	@property
+	def MAGIC(self):
+		a, b, c, d = self.config['magic']
+		return ord(a) << 24 | ord(b) << 16 | ord(c) << 8 | ord(d)
 
 	def encode(self):
-		return
+
+		max_n_bytes = 14 + self.total_size * 4 + len(self.config['EOF'])
+		if max_n_bytes > 400_000_000:
+			raise MemoryError(f"Maximum byte count exceeded: {max_n_bytes}")
+		
+		# write header
+		self.writer.write_4_bytes(self.MAGIC)
+		self.writer.write_4_bytes(self.width)
+		self.writer.write_4_bytes(self.height)
+		self.writer.write(self.config['channels']) # N_CHANNELS = 3
+		self.writer.write(0) # srgb colorspace
+
+		# encode pixels
+		run = 0
+
+		prev_pixel = Pixel()
+		curr_pixel = Pixel()
+
+		pixel_data = (
+			self.image_bytes[i:i + self.config['channels']] for i in range(0, len(self.image_bytes), self.config['channels'])
+		)
+
+		for i, px in enumerate(pixel_data):
+
+			prev_pixel.update(curr_pixel.bytes)
+			curr_pixel.update(px)
+
+			if curr_pixel == prev_pixel:
+				run += 1
+				if run == 62 or (i + 1) >= self.total_size:
+					self.info['run'] += 1
+					self.writer.write(Utils.TAG_RUN | (run - 1))
+					run = 0
+				continue
+
+			if run:
+				self.info['run'] += 1
+				self.writer.write(Utils.TAG_RUN | (run - 1))
+				run = 0
+
+			index_pos = curr_pixel.hash
+			if self.hash_array[index_pos] == curr_pixel:
+				self.info['cache'] += 1
+				self.writer.write(Utils.TAG_INDEX | index_pos)
+				continue
+
+			self.hash_array[index_pos].update(curr_pixel.bytes)
+
+			vr = curr_pixel.red - prev_pixel.red
+			vg = curr_pixel.green - prev_pixel.green
+			vb = curr_pixel.blue - prev_pixel.blue
+
+			vg_r = vr - vg
+			vg_b = vb - vg
+
+			if all(-3 < x < 2 for x in (vr, vg, vb)):
+				self.info['diff'] += 1
+				self.writer.write(Utils.TAG_DIFF | (vr + 2) << 4 | (vg + 2) << 2 | (vb + 2))
+				continue
+
+			elif all(-9 < x < 8 for x in (vg_r, vg_b)) and -33 < vg < 32:
+				self.info['luma'] += 1
+				self.writer.write(Utils.TAG_LUMA | (vg + 32))
+				self.writer.write((vg_r + 8) << 4 | (vg_b + 8))
+				continue
+
+			self.info['full'] += 1
+			self.writer.write(Utils.TAG_RGB)
+			self.writer.write(curr_pixel.red)
+			self.writer.write(curr_pixel.green)
+			self.writer.write(curr_pixel.blue)
+
+		print(json.dumps(self.info))
+
+		# Write EOF termination
+		for end in self.config['EOF']:
+			self.writer.write(end)
+
+		output = self.writer.output()
+
+		if self.config['zlib_compression']:
+			print(f'Before zlib: {len(output)} bytes')
+			output = zlib.compress(output, 
+				level = self.config['zlib_compression_level'])
+			print(f' After zlib: {len(output)} bytes')
+
+		with open(self.out_path, 'wb') as fout:
+			fout.write(output)
 
 class Decoder:
 
-	def __init__(self, config):
-		pass
+	def __init__(self, config, file_bytes, out_path):
+
+		self.config = config
+
+		self.file_bytes = file_bytes
+		if self.config['zlib_compression']:
+			self.file_bytes = zlib.decompress(self.file_bytes)
+
+		self.reader = ByteReader(self.file_bytes)
+		self.out_path = out_path
+
+		self.hash_array = [Pixel() for _ in range(64)]
+
+	@property
+	def MAGIC(self):
+		a, b, c, d = self.config['magic']
+		return ord(a) << 24 | ord(b) << 16 | ord(c) << 8 | ord(d)
 
 	def decode(self):
-		return
-"""
+
+		header_magic = self.reader.read_4_bytes()
+
+		if header_magic != self.MAGIC:
+			raise ValueError('provided image does not contain proper header')
+
+		self.width = self.reader.read_4_bytes()
+		self.height = self.reader.read_4_bytes()
+		self.channels = self.reader.read()
+		self.colorspace = self.reader.read()
+
+		self.size = (self.width, self.height)
+		self.out_size = self.width * self.height * self.channels
+
+		self.pixel_data = bytearray(self.out_size)
+
+		run = 0
+		pixel = Pixel()
+
+		for i in range(-self.channels, self.out_size, self.channels):
+
+			index_pos = pixel.hash
+			self.hash_array[index_pos].update(pixel.bytes)
+
+			if i >= 0:
+				self.pixel_data[i:i + self.channels] = pixel.bytes
+
+			if run > 0:
+				run -= 1
+				continue
+
+			data = self.reader.read()
+			if data is None:
+				break
+
+			if data == Utils.TAG_RGB:
+				new_value = bytes((self.reader.read() for _ in range(3)))
+				pixel.update(new_value)
+				continue
+
+			if (data & Utils.TAG_MASK) == Utils.TAG_INDEX:
+				pixel.update(self.hash_array[data].bytes)
+				continue
+
+			if (data & Utils.TAG_MASK) == Utils.TAG_DIFF:
+				red = (pixel.red + ((data >> 4) & 0x03) - 2) % 256
+				green = (pixel.green + ((data >> 2) & 0x03) - 2) % 256
+				blue = (pixel.blue + (data & 0x03) - 2) % 256
+				pixel.update(bytes((red, green, blue)))
+				continue
+
+			if (data & Utils.TAG_MASK) == Utils.TAG_LUMA:
+				b2 = self.reader.read()
+				vg = ((data & 0x3f) % 256) - 32
+				red = (pixel.red + vg - 8 + ((b2 >> 4) & 0x0f)) % 256
+				green = (pixel.green + vg) % 256
+				blue = (pixel.blue + vg - 8 + (b2 & 0x0f)) % 256
+				pixel.update(bytes((red, green, blue)))
+				continue
+
+			if (data & Utils.TAG_MASK) == Utils.TAG_RUN:
+				run = (data & 0x3f)
+
+		image = Image.frombuffer('RGB', self.size, bytes(self.pixel_data), 'raw')
+		image.save(self.out_path, 'png')

@@ -126,9 +126,16 @@ if __name__ == '__main__':
 
 	curve = GeneralizedHilbertCurve(args.width, args.height)
 
+	perf_start = time.perf_counter()
 	start = time.process_time()
 	for x, y in curve.generator():
 		pass
 	elapsed = time.process_time() - start
+	perf_elapsed = time.perf_counter() - perf_start
 
-	print(f'Generator Elapsed: {elapsed} sec')
+	# Compensate for time.process_time() overhead
+	diff = perf_elapsed - elapsed
+
+	# print(f'Process Elapsed: {elapsed} sec')
+	# print(f'Perf Elapsed: {perf_elapsed} sec')
+	print(f'Generator Elapsed: {elapsed - diff} sec')
