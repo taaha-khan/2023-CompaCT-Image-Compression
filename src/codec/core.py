@@ -28,13 +28,10 @@ from PIL import Image
 import json
 import zlib
 
-# from codec.curve import GeneralizedHilbertCurve
+from codec.curve import GeneralizedHilbertCurve
 
+# chunk tags
 class Utils:
-
-	CHANNELS = 3
-
-	# chunk tags
 	TAG_INDEX = 0x00  # 00xxxxxx
 	TAG_DIFF = 0x40  # 01xxxxxx
 	TAG_LUMA = 0x80  # 10xxxxxx
@@ -135,6 +132,11 @@ class Encoder:
 		self.width, self.height = image.size
 		self.total_size = self.width * self.height
 
+		self.curve = GeneralizedHilbertCurve(
+			self.width, self.height, 
+			get_index = True
+		)
+
 		self.writer = ByteWriter()
 		self.out_path = out_path
 
@@ -172,11 +174,23 @@ class Encoder:
 		prev_pixel = Pixel()
 		curr_pixel = Pixel()
 
-		pixel_data = (
-			self.image_bytes[i:i + self.config['channels']] for i in range(0, len(self.image_bytes), self.config['channels'])
-		)
+		n = -1
+		
+		if self.config['fractal']:
+			self.curve = GeneralizedHilbertCurve(self.width, self.height, get_index = True)
+			pixel_order = self.curve.generator()
+		else:
+			pixel_order = range(self.total_size)
 
-		for i, px in enumerate(pixel_data):
+		for i in pixel_order:
+
+			n += 1
+
+			index = self.config['channels'] * i
+			px = self.image_bytes[index : index + self.config['channels']]
+
+			# if n < 200:
+			# 	print(f'{n}: {i} -> {index}')
 
 			prev_pixel.update(curr_pixel.bytes)
 			curr_pixel.update(px)
@@ -220,6 +234,11 @@ class Encoder:
 				self.writer.write((vg_r + 8) << 4 | (vg_b + 8))
 				continue
 
+			############################################################
+			# TODO: Jump ahead n pixels will help with more patterns
+			# Come back to skipped pixels at the end
+			############################################################
+
 			self.info['full'] += 1
 			self.writer.write(Utils.TAG_RGB)
 			self.writer.write(curr_pixel.red)
@@ -234,20 +253,31 @@ class Encoder:
 
 		output = self.writer.output()
 
+		ratio = len(self.image_bytes) / len(output)
+		print(f'Initial compression ratio: {round(ratio, 3)}x')
+
 		if self.config['zlib_compression']:
-			print(f'Before zlib: {len(output)} bytes')
-			output = zlib.compress(output, 
+
+			compressed = zlib.compress(output, 
 				level = self.config['zlib_compression_level'])
-			print(f' After zlib: {len(output)} bytes')
+
+			print(f'Zlib compression ratio: {round(len(output) / len(compressed), 3)}x')
+			output = compressed
 
 		with open(self.out_path, 'wb') as fout:
 			fout.write(output)
+
+		ratio = len(self.image_bytes) / len(output)
+		print(f'Final compression ratio: {round(ratio, 3)}x')
 
 class Decoder:
 
 	def __init__(self, config, file_bytes, out_path):
 
 		self.config = config
+
+		# Don't know dimensions yet
+		self.curve = None
 
 		self.file_bytes = file_bytes
 		if self.config['zlib_compression']:
@@ -268,7 +298,7 @@ class Decoder:
 		header_magic = self.reader.read_4_bytes()
 
 		if header_magic != self.MAGIC:
-			raise ValueError('provided image does not contain proper header')
+			raise ValueError('Image does not contain valid header')
 
 		self.width = self.reader.read_4_bytes()
 		self.height = self.reader.read_4_bytes()
@@ -283,13 +313,26 @@ class Decoder:
 		run = 0
 		pixel = Pixel()
 
-		for i in range(-self.channels, self.out_size, self.channels):
+		n = -1
+		index = -1
+
+		if self.config['fractal']:
+			self.curve = GeneralizedHilbertCurve(self.width, self.height, get_index = True)
+			pixel_order = self.curve.generator()
+		else:
+			pixel_order = range(self.total_size)
+
+		for i in pixel_order:
+
+			n += 1
 
 			index_pos = pixel.hash
 			self.hash_array[index_pos].update(pixel.bytes)
 
-			if i >= 0:
-				self.pixel_data[i:i + self.channels] = pixel.bytes
+			if index >= 0:
+				self.pixel_data[index:index + self.channels] = pixel.bytes
+
+			index = self.config['channels'] * i
 
 			if run > 0:
 				run -= 1
@@ -326,6 +369,8 @@ class Decoder:
 
 			if (data & Utils.TAG_MASK) == Utils.TAG_RUN:
 				run = (data & 0x3f)
+
+		print(f'len raw: {len(self.pixel_data)} bytes')
 
 		image = Image.frombuffer('RGB', self.size, bytes(self.pixel_data), 'raw')
 		image.save(self.out_path, 'png')

@@ -32,7 +32,7 @@ def main():
 
 	directory = os.getcwd().split('\\')[-1]
 	config = json.load(open(('src/' if directory != 'src' else '') + 'config.json', 'r'))
-	print(json.dumps(config))
+	# print(json.dumps(config))
 
 	if args.encode:
 
@@ -64,7 +64,6 @@ def main():
 		decoder.decode()
 
 		size_decoded = os.path.getsize(out_path)
-
 
 if __name__ == '__main__':
 	main()

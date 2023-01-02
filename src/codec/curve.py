@@ -34,10 +34,11 @@ OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 class GeneralizedHilbertCurve:
 
-	def __init__(self, width, height):
+	def __init__(self, width, height, get_index = False):
 		self.width = width
 		self.height = height
 
+		self.get_index = get_index
 		self.curve = []
 
 	def generator(self):
@@ -60,6 +61,15 @@ class GeneralizedHilbertCurve:
 		else:
 			yield from self.generate(0, 0, 0, self.height, self.width, 0)
 
+	def idx(self, p):
+		""" Get raster scan index at which this (r, c) would be """
+		r, c = p
+		return r * self.width + c
+	
+	def pos(self, p):
+		""" Get (r, c) given raster scan index position """
+		return (p // self.width, p % self.width)		
+
 	def sgn(self, x):
 		return -1 if x < 0 else (1 if x > 0 else 0)
 
@@ -74,14 +84,24 @@ class GeneralizedHilbertCurve:
 		if h == 1:
 			# trivial row fill
 			for i in range(0, w):
-				yield(x, y)
+
+				if self.get_index:
+					yield self.idx((y, x))
+				else: 
+					yield (y, x)
+
 				(x, y) = (x + dax, y + day)
 			return
 
 		if w == 1:
 			# trivial column fill
 			for i in range(0, h):
-				yield(x, y)
+
+				if self.get_index:
+					yield self.idx((y, x))
+				else: 
+					yield (y, x)
+
 				(x, y) = (x + dbx, y + dby)
 			return
 
@@ -124,18 +144,24 @@ if __name__ == '__main__':
 	N = args.width * args.height
 	print(f'Curve Dimensions: {args.width} x {args.height} = {N}')
 
-	curve = GeneralizedHilbertCurve(args.width, args.height)
+	curve = GeneralizedHilbertCurve(args.width, args.height, get_index = True)
 
-	perf_start = time.perf_counter()
 	start = time.process_time()
-	for x, y in curve.generator():
+	for a in curve.generator():
 		pass
 	elapsed = time.process_time() - start
-	perf_elapsed = time.perf_counter() - perf_start
 
-	# Compensate for time.process_time() overhead
-	diff = perf_elapsed - elapsed
+	print(f'Generator Elapsed: {elapsed} sec')
 
-	# print(f'Process Elapsed: {elapsed} sec')
-	# print(f'Perf Elapsed: {perf_elapsed} sec')
-	print(f'Generator Elapsed: {elapsed - diff} sec')
+	print('curve', curve.curve)
+
+	import numpy as np
+	a = np.zeros(N) # .reshape(args.height, args.width)
+
+	for i in range(len(curve.curve)):
+		# a[curve.curve[i]] = i
+		a[curve.curve[i]] = i
+
+	a = a.reshape(args.height, args.width)
+
+	print(a)

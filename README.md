@@ -2,6 +2,18 @@
 # Image Compression
 ### Taaha Khan 2023 Science Expo Project
 
+## Completed
+- Port QOI and Gilbert for python
+- Plugin Gilbert to QOI ordering
+- Apply ZLib DEFLATE compression to output
+
+## TODO
+- Create section skipping algorithm (binary search?)
+- Port to HDR byte format
+- Get SRGB and HDR testing datasets
+- Compare compression ratio, BPP with competitors
+- Write up slideshow and abstract
+
 ## Lossless Encoder
 
 - More than 8 bits per color component (16? 32?) for [HDR](https://en.wikipedia.org/wiki/Multi-exposure_HDR_capture) user market (medical, photography, security)
@@ -31,7 +43,7 @@
 
 		MAXIMIZES: cache, near previous, run length
 
-		**Improved Lossless HDR Image Compression Applying Fractal Topological Pixel Reordering**
+		**Improved Lossless HDR Image Compression Applying Fractal Topological Pixel Restructuring**
 
 		- Each hilbert section is a segment
 		- Add segment jumping capabilities with tag in bitstream
@@ -90,8 +102,9 @@
 
 ## Important Sources
 
-### Medical Applications
+### HDR
 - [Laws and HDR Usages](researchgate.net/profile/David-Clunie/publication/283356591_What_is_Different_About_Medical_Image_Compression/links/56376a3708aeb786b7044b8a/What-is-Different-About-Medical-Image-Compression.pdf)
+- [HDR Image Data](https://unsplash.com/images/stock/hdr)
 
 ### Project Structure Notation
 - [Simple Documentation](https://github.com/mitcommlab/Coding-Documentation/blob/master/File-Structure-Case-Studies.md#case-study-2-a-simple-hierarchy)
@@ -99,15 +112,3 @@
 ### JPEG Structure
 - [JPEG Overview Notebook](https://inst.eecs.berkeley.edu/~ee123/sp16/Sections/JPEG_DCT_Demo.html)
 - [Block Quantization](https://en.wikipedia.org/wiki/Quantization_(image_processing))
-
-### Color Transforms
-- [YCbCr Wikipedia](https://en.wikipedia.org/wiki/YCbCr)
-- [Python Implementation](https://gist.github.com/roytseng-tw/dafc041a65edfdfd86bafcb8129da57d)
-
-### Evaluation Metrics
-- [Peak Signal-to-Noise Ratio](https://en.wikipedia.org/wiki/Peak_signal-to-noise_ratio)
-- [Bits Per Pixel (BPP)]
-
-### Block Image Partitioning
-- [JPEG 2000 Tiling](https://en.wikipedia.org/wiki/JPEG_2000#Tiling)
-- [HEVC Encoding](https://www.vcodex.com/hevc-an-introduction-to-high-efficiency-coding/)

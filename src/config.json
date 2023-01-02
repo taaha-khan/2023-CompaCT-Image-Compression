@@ -4,12 +4,15 @@
 	"extension": "qoi",
 
 	"channels": 3,
+	"color_component_bytes": 1,
 
 	"EOF": [0, 0, 0, 0, 0, 0, 0, 1],
 
-	"verbose": true,
+	"fractal": true,
 
 	"zlib_compression": true,
-	"zlib_compression_level": 9
+	"zlib_compression_level": 9,
+
+	"verbose": true
 
 }
