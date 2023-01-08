@@ -24,20 +24,43 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 """
 
+from collections import OrderedDict
 from PIL import Image
 import json
 import zlib
 
 from codec.curve import GeneralizedHilbertCurve
+ 
+class LRUCache:
+
+	def __init__(self, capacity: int):
+		self.cache = OrderedDict()
+		self.capacity = capacity
+ 
+	def get(self, key: int) -> int:
+		if key not in self.cache:
+			return -1
+		else:
+			self.cache.move_to_end(key)
+			return self.cache[key]
+ 
+	def put(self, key: int, value: int) -> None:
+		self.cache[key] = value
+		self.cache.move_to_end(key)
+		if len(self.cache) > self.capacity:
+			self.cache.popitem(last = False)
 
 # chunk tags
 class Utils:
+	TAG_MASK = 0xc0  # 11000000
+
 	TAG_INDEX = 0x00  # 00xxxxxx
 	TAG_DIFF = 0x40  # 01xxxxxx
 	TAG_LUMA = 0x80  # 10xxxxxx
 	TAG_RUN = 0xc0  # 11xxxxxx
-	TAG_RGB = 0xfe  # 11111111 # FIXME
-	TAG_MASK = 0xc0  # 11000000
+	TAG_RGB = 0xfe  # 11111110
+
+	TAG_CLUSTER = 0xff # 11111111
 
 class Pixel:
 
@@ -122,24 +145,26 @@ class ByteReader:
 
 class Encoder:
 
-	def __init__(self, config, image, out_path):
+	def __init__(self, config, image, out_path = None):
 
 		self.config = config
 
 		self.image = image
 		self.image_bytes = image.tobytes()
 
-		self.width, self.height = image.size
-		self.total_size = self.width * self.height
+		# Split Byte[0] and Byte[1] for each 16 bit greyscale pixel value
+		self.reorganized_bytes = self.image_bytes[0::2] + self.image_bytes[1::2]
 
-		self.curve = GeneralizedHilbertCurve(
-			self.width, self.height, 
-			get_index = True
-		)
+		self.secondary = self.image_bytes[0::2]
+		self.primary = self.image_bytes[1::2]
+
+		self.width, self.height = image.size
+		self.size = self.width * self.height
 
 		self.writer = ByteWriter()
 		self.out_path = out_path
 
+		# self.lru_cache = LRUCache(64)
 		self.hash_array = [Pixel() for _ in range(64)]
 
 		self.info = {
@@ -157,7 +182,8 @@ class Encoder:
 
 	def encode(self):
 
-		max_n_bytes = 14 + self.total_size * 4 + len(self.config['EOF'])
+		max_n_bytes = self.size * self.config['channels'] * (self.config['bytes_per_channel'] + 1)
+		print(f'Max Num Bytes: {max_n_bytes}')
 		if max_n_bytes > 400_000_000:
 			raise MemoryError(f"Maximum byte count exceeded: {max_n_bytes}")
 		
@@ -165,8 +191,7 @@ class Encoder:
 		self.writer.write_4_bytes(self.MAGIC)
 		self.writer.write_4_bytes(self.width)
 		self.writer.write_4_bytes(self.height)
-		self.writer.write(self.config['channels']) # N_CHANNELS = 3
-		self.writer.write(0) # srgb colorspace
+		self.writer.write(self.config['channels'])
 
 		# encode pixels
 		run = 0
@@ -180,7 +205,7 @@ class Encoder:
 			self.curve = GeneralizedHilbertCurve(self.width, self.height, get_index = True)
 			pixel_order = self.curve.generator()
 		else:
-			pixel_order = range(self.total_size)
+			pixel_order = range(self.size)
 
 		for i in pixel_order:
 
@@ -189,15 +214,34 @@ class Encoder:
 			index = self.config['channels'] * i
 			px = self.image_bytes[index : index + self.config['channels']]
 
-			# if n < 200:
-			# 	print(f'{n}: {i} -> {index}')
-
 			prev_pixel.update(curr_pixel.bytes)
 			curr_pixel.update(px)
 
+			### APPLE PACKBITS
+			"""
+
+			# https://github.com/psd-tools/packbits/blob/master/src/packbits.py
+
+			# Run length encoding for repeating pixels
+			if curr == prev:
+				run++
+			else: 
+				run = 0
+
+			if 2 > run <= 128:
+				write(run)
+				write(curr)
+				run = 0
+
+			elif curr != prev:
+				
+			
+			"""
+			###
+
 			if curr_pixel == prev_pixel:
 				run += 1
-				if run == 62 or (i + 1) >= self.total_size:
+				if run == 62 or (i + 1) >= self.size:
 					self.info['run'] += 1
 					self.writer.write(Utils.TAG_RUN | (run - 1))
 					run = 0
@@ -213,8 +257,15 @@ class Encoder:
 				self.info['cache'] += 1
 				self.writer.write(Utils.TAG_INDEX | index_pos)
 				continue
-
 			self.hash_array[index_pos].update(curr_pixel.bytes)
+
+			# hashed = str(curr_pixel)
+			# g = self.lru_cache.get(hashed)
+			# if g != -1:
+			# 	self.info['cache'] += 1
+			# 	self.writer.write(Utils.TAG_INDEX | index_pos)
+			# 	continue
+			# self.lru_cache.put(hashed, None)
 
 			vr = curr_pixel.red - prev_pixel.red
 			vg = curr_pixel.green - prev_pixel.green
@@ -228,7 +279,7 @@ class Encoder:
 				self.writer.write(Utils.TAG_DIFF | (vr + 2) << 4 | (vg + 2) << 2 | (vb + 2))
 				continue
 
-			elif all(-9 < x < 8 for x in (vg_r, vg_b)) and -33 < vg < 32:
+			elif -33 < vg < 32 and all(-9 < x < 8 for x in (vg_r, vg_b)):
 				self.info['luma'] += 1
 				self.writer.write(Utils.TAG_LUMA | (vg + 32))
 				self.writer.write((vg_r + 8) << 4 | (vg_b + 8))
@@ -239,6 +290,7 @@ class Encoder:
 			# Come back to skipped pixels at the end
 			############################################################
 
+			# TODO: Try encoding differences here % 256
 			self.info['full'] += 1
 			self.writer.write(Utils.TAG_RGB)
 			self.writer.write(curr_pixel.red)
@@ -264,20 +316,20 @@ class Encoder:
 			print(f'Zlib compression ratio: {round(len(output) / len(compressed), 3)}x')
 			output = compressed
 
-		with open(self.out_path, 'wb') as fout:
-			fout.write(output)
+		if self.out_path is not None:
+			with open(self.out_path, 'wb') as fout:
+				fout.write(output)
 
 		ratio = len(self.image_bytes) / len(output)
 		print(f'Final compression ratio: {round(ratio, 3)}x')
 
+		return output
+
 class Decoder:
 
-	def __init__(self, config, file_bytes, out_path):
+	def __init__(self, config, file_bytes, out_path = None):
 
 		self.config = config
-
-		# Don't know dimensions yet
-		self.curve = None
 
 		self.file_bytes = file_bytes
 		if self.config['zlib_compression']:
@@ -303,12 +355,12 @@ class Decoder:
 		self.width = self.reader.read_4_bytes()
 		self.height = self.reader.read_4_bytes()
 		self.channels = self.reader.read()
-		self.colorspace = self.reader.read()
 
-		self.size = (self.width, self.height)
-		self.out_size = self.width * self.height * self.channels
+		self.shape = (self.width, self.height)
+		self.size = self.width * self.height
+		self.total_size = self.width * self.height * self.channels
 
-		self.pixel_data = bytearray(self.out_size)
+		self.pixel_data = bytearray(self.total_size)
 
 		run = 0
 		pixel = Pixel()
@@ -320,7 +372,7 @@ class Decoder:
 			self.curve = GeneralizedHilbertCurve(self.width, self.height, get_index = True)
 			pixel_order = self.curve.generator()
 		else:
-			pixel_order = range(self.total_size)
+			pixel_order = range(self.size)
 
 		for i in pixel_order:
 
@@ -372,5 +424,8 @@ class Decoder:
 
 		print(f'len raw: {len(self.pixel_data)} bytes')
 
-		image = Image.frombuffer('RGB', self.size, bytes(self.pixel_data), 'raw')
-		image.save(self.out_path, 'png')
+		if self.out_path is not None:
+			image = Image.frombuffer('RGB', self.shape, bytes(self.pixel_data), 'raw')
+			image.save(self.out_path, format = self.config['decode_format'])
+
+		return self.pixel_data

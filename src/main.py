@@ -16,7 +16,7 @@ def get_filename(path, is_encoding, config):
 	name, filetype = filename.split('.')
 
 	transfer_type = 'encoded' if is_encoding else 'decoded'
-	filetype = config['extension'] if is_encoding else 'png'
+	filetype = config['extension'] if is_encoding else config['decode_format']
 
 	renamed = f'{path}/{transfer_type}-{name}.{filetype}'
 	return renamed
@@ -36,24 +36,23 @@ def main():
 
 	if args.encode:
 
-		try:
-			image = Image.open(args.file_path)
-		except Exception as exc:
-			print(f'Image at \'{args.file_path}\' load failed: {exc}')
-			return
-
-		size_original = os.path.getsize(args.file_path)
+		if args.file_path.endswith('dcm'):
+			image = Image.fromarray(pydicom.imread(args.file_path).pixel_data)
+		else:
+			try:
+				image = Image.open(args.file_path)
+			except Exception as exc:
+				print(f'Image at \'{args.file_path}\' load failed: {exc}')
+				return
 
 		out_path = get_filename(args.file_path, True, config)
 
 		encoder = Encoder(config, image, out_path)
 		encoder.encode()
 
-		size_encoded = os.path.getsize(out_path)
+		print(f'{args.file_path} encoded to {out_path}')
 
 	elif args.decode:
-
-		size_encoded = os.path.getsize(args.file_path)
 
 		with open(args.file_path, 'rb') as encoded:
 			file_bytes = encoded.read()
@@ -63,7 +62,7 @@ def main():
 		decoder = Decoder(config, file_bytes, out_path)
 		decoder.decode()
 
-		size_decoded = os.path.getsize(out_path)
+		print(f'{args.file_path} decoded to {out_path}')
 
 if __name__ == '__main__':
 	main()

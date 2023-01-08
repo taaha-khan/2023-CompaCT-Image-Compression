@@ -1,10 +1,12 @@
 {
 
-	"magic": "qoif",
-	"extension": "qoi",
+	"magic": "khan",
+	"extension": "khn",
+
+	"decode_format": "png",
 
 	"channels": 3,
-	"color_component_bytes": 1,
+	"bytes_per_channel": 1,
 
 	"EOF": [0, 0, 0, 0, 0, 0, 0, 1],
 

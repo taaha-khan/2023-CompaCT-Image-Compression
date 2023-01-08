@@ -6,11 +6,11 @@
 - Port QOI and Gilbert for python
 - Plugin Gilbert to QOI ordering
 - Apply ZLib DEFLATE compression to output
+- Get SRGB and HDR testing datasets
 
 ## TODO
-- Create section skipping algorithm (binary search?)
+- Hirerichal Clustering: Create section skipping algorithm (binary search?)
 - Port to HDR byte format
-- Get SRGB and HDR testing datasets
 - Compare compression ratio, BPP with competitors
 - Write up slideshow and abstract
 
@@ -43,7 +43,8 @@
 
 		MAXIMIZES: cache, near previous, run length
 
-		**Improved Lossless HDR Image Compression Applying Fractal Topological Pixel Restructuring**
+		**Lossless HDR CT Scan Compression Applying Fractal Topological Pixel Reordering with Heuristic Hierarical Clustering**
+		Clustering vs Segmentaiton
 
 		- Each hilbert section is a segment
 		- Add segment jumping capabilities with tag in bitstream
@@ -93,22 +94,25 @@
 - Apply Post-processing compression
 	- DEFLATE (LZ77 + Huffman coding) (slow, middle effect, familiar)
 	- Arithmetic coding (slow, best effect, unfamiliar)
-	- ZStandard Coding (fast, middle effect, familiar)
+	- ZStandard Coding (fast, worst effect, familiar)
 
 ## Compare Compression Ratio, Speed, *Quality
 - Public compression datasets
 - Lossless: PNG, WebP, FLIF, JPEG-LS, JPEG2000, QOI, [HDR](https://en.wikipedia.org/wiki/Category:High_dynamic_range_file_formats)
 - *Lossy: JPEG, JPEG2000, HEIF
+- DICOM ALGORITHM: https://pydicom.github.io/pydicom/dev/tutorials/pixel_data/compressing.html#compressing-using-pydicom
 
 ## Important Sources
 
+### QOI
+- 
+- [Feedback](https://wiesmann.codiferes.net/wordpress/archives/33156)
+
+### HDR CT Dataset
+- [GE, non-equistant, gantry/detector tilt](https://www.aliza-dicom-viewer.com/download/datasets)
+
 ### HDR
 - [Laws and HDR Usages](researchgate.net/profile/David-Clunie/publication/283356591_What_is_Different_About_Medical_Image_Compression/links/56376a3708aeb786b7044b8a/What-is-Different-About-Medical-Image-Compression.pdf)
-- [HDR Image Data](https://unsplash.com/images/stock/hdr)
 
 ### Project Structure Notation
 - [Simple Documentation](https://github.com/mitcommlab/Coding-Documentation/blob/master/File-Structure-Case-Studies.md#case-study-2-a-simple-hierarchy)
-
-### JPEG Structure
-- [JPEG Overview Notebook](https://inst.eecs.berkeley.edu/~ee123/sp16/Sections/JPEG_DCT_Demo.html)
-- [Block Quantization](https://en.wikipedia.org/wiki/Quantization_(image_processing))
