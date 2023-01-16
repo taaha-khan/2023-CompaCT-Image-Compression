@@ -2,6 +2,22 @@
 # Image Compression
 ### Taaha Khan 2023 Science Expo Project
 
+## Title Ideas
+
+**Keywords**
+- Improved/Applying/With/Through
+- Lossless, Perfect Quality
+- HDR (High Dynamic Range), High (Bit) Depth
+- Image Compression
+- CT (Computed Tomography) Scan
+- Pixel
+- Fractal
+- Topological
+- Reordering/Restructering
+- Heuristic Hierarical Clustering/Segmentation
+
+**TITLE: Lossless High Bit Depth Computed Tomography Scan Compression Applying Fractal Topological Pixel Reordering with Heuristic Hierarical Segmentation**
+
 ## Completed
 - Port QOI and Gilbert for python
 - Plugin Gilbert to QOI ordering
@@ -9,8 +25,8 @@
 - Get SRGB and HDR testing datasets
 
 ## TODO
+- QOI: Port to HDR byte format
 - Hirerichal Clustering: Create section skipping algorithm (binary search?)
-- Port to HDR byte format
 - Compare compression ratio, BPP with competitors
 - Write up slideshow and abstract
 
@@ -42,9 +58,6 @@
 		- CON: Quadtree based structure can completely disregard predictably intelligent areas and move away
 
 		MAXIMIZES: cache, near previous, run length
-
-		**Lossless HDR CT Scan Compression Applying Fractal Topological Pixel Reordering with Heuristic Hierarical Clustering**
-		Clustering vs Segmentaiton
 
 		- Each hilbert section is a segment
 		- Add segment jumping capabilities with tag in bitstream
@@ -81,35 +94,34 @@
 
 		**Every mf already done this**
 	
-- Apply QOI-based condense algorithm (prefer byte alignment with type tags)
+- Apply QOI or PackBits based condense algorithm (prefer byte alignment with type tags)
 	1. Run-length encoding
 	2. Recent palette cache index
 	3. Near previous difference encoding
 	4. Near previous 2-byte difference encoding
 	5. Last case: Full pixel values
 
-	Potential:
-		- PNG based alignment
-
 - Apply Post-processing compression
-	- DEFLATE (LZ77 + Huffman coding) (slow, middle effect, familiar)
+	- DEFLATE (LZ77 + Huffman coding) (slow, decent effect, simple)
 	- Arithmetic coding (slow, best effect, unfamiliar)
-	- ZStandard Coding (fast, worst effect, familiar)
 
-## Compare Compression Ratio, Speed, *Quality
+## Compare Compression Ratio, BPP, Space Saved, Speed
 - Public compression datasets
 - Lossless: PNG, WebP, FLIF, JPEG-LS, JPEG2000, QOI, [HDR](https://en.wikipedia.org/wiki/Category:High_dynamic_range_file_formats)
-- *Lossy: JPEG, JPEG2000, HEIF
 - DICOM ALGORITHM: https://pydicom.github.io/pydicom/dev/tutorials/pixel_data/compressing.html#compressing-using-pydicom
 
 ## Important Sources
 
 ### QOI
-- 
-- [Feedback](https://wiesmann.codiferes.net/wordpress/archives/33156)
+- [Blog](https://phoboslab.org/log/2021/11/qoi-fast-lossless-image-compression)
+- [Source](https://github.com/phoboslab/qoi)
+- [Python Port](https://github.com/mathpn/py-qoi)
+- [Interesting Analysis](https://wiesmann.codiferes.net/wordpress/archives/33156)
+- [WEBP Spec](https://developers.google.com/speed/webp/docs/webp_lossless_bitstream_specification)
 
 ### HDR CT Dataset
 - [GE, non-equistant, gantry/detector tilt](https://www.aliza-dicom-viewer.com/download/datasets)
+- [QIN LUNG CT](https://wiki.cancerimagingarchive.net/display/Public/QIN+LUNG+CT#19039647a520d4e15ee04e84bf26ec185e5403b7)
 
 ### HDR
 - [Laws and HDR Usages](researchgate.net/profile/David-Clunie/publication/283356591_What_is_Different_About_Medical_Image_Compression/links/56376a3708aeb786b7044b8a/What-is-Different-About-Medical-Image-Compression.pdf)

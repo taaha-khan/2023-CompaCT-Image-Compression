@@ -25,11 +25,14 @@ SOFTWARE.
 """
 
 from collections import OrderedDict
+from tabulate import tabulate
 from PIL import Image
 import json
 import zlib
+import sys
 
 from codec.curve import GeneralizedHilbertCurve
+from codec.packbits import PackBits
  
 class LRUCache:
 
@@ -40,9 +43,13 @@ class LRUCache:
 	def get(self, key: int) -> int:
 		if key not in self.cache:
 			return -1
-		else:
-			self.cache.move_to_end(key)
-			return self.cache[key]
+		self.cache.move_to_end(key)
+		return self.cache[key]
+
+	def get_index(self, key):
+		if key not in self.cache:
+			return -1
+		return list(self.cache.keys()).index(key)
  
 	def put(self, key: int, value: int) -> None:
 		self.cache[key] = value
@@ -58,21 +65,24 @@ class Utils:
 	TAG_DIFF = 0x40  # 01xxxxxx
 	TAG_LUMA = 0x80  # 10xxxxxx
 	TAG_RUN = 0xc0  # 11xxxxxx
-	TAG_RGB = 0xfe  # 11111110
+	TAG_FULL = 0xfe  # 11111110
 
 	TAG_CLUSTER = 0xff # 11111111
 
 class Pixel:
 
-	def __init__(self):
-		self.px_bytes = bytearray((0, 0, 0))
+	def __init__(self, n = 2):
+		self.n = n
+		self.px_bytes = bytearray((0,) * n)
+		self.value = 0
 
 	def update(self, values: bytes) -> None:
-		self.px_bytes[0:3] = values
+		self.px_bytes[0 : self.n] = values
+		# FIXME CHECK BYTEORDER
+		self.value = int.from_bytes(self.px_bytes, byteorder = sys.byteorder)
 
 	def __str__(self) -> str:
-		r, g, b = self.px_bytes
-		return f'[R = {r}, G = {g}, B = {b}]'
+		return f'{tuple(self.px_bytes)}'
 
 	def __eq__(self, other):
 		return self.px_bytes == other.px_bytes
@@ -83,20 +93,15 @@ class Pixel:
 
 	@property
 	def hash(self) -> int:
-		r, g, b = self.px_bytes
-		return (r * 3 + g * 5 + b * 7) % 64
+		return self.value % 64
 
 	@property
-	def red(self) -> int:
+	def A(self):
 		return self.px_bytes[0]
-
+	
 	@property
-	def green(self) -> int:
+	def B(self):
 		return self.px_bytes[1]
-
-	@property
-	def blue(self) -> int:
-		return self.px_bytes[2]
 
 class ByteWriter:
 
@@ -109,6 +114,10 @@ class ByteWriter:
 	def write_4_bytes(self, value):
 		self.write((0xff000000 & value) >> 24)
 		self.write((0x00ff0000 & value) >> 16)
+		self.write((0x0000ff00 & value) >> 8)
+		self.write((0x000000ff & value))
+
+	def write_2_bytes(self, value):
 		self.write((0x0000ff00 & value) >> 8)
 		self.write((0x000000ff & value))
 
@@ -140,8 +149,13 @@ class ByteReader:
 		b1, b2, b3, b4 = data
 		return b1 << 24 | b2 << 16 | b3 << 8 | b4
 
+	def read_2_bytes(self):
+		data = [self.read() for _ in range(2)]
+		b1, b2 = data
+		return b1 << 8 | b2
+
 	def output(self):
-		return bytes(self.bytes[0:self.read_pos])
+		return bytes(self.bytes[0 : self.read_pos])
 
 class Encoder:
 
@@ -152,21 +166,19 @@ class Encoder:
 		self.image = image
 		self.image_bytes = image.tobytes()
 
-		# Split Byte[0] and Byte[1] for each 16 bit greyscale pixel value
+		# Split Byte[0] and Byte[1] for each 16 bit grayscale pixel value
 		self.reorganized_bytes = self.image_bytes[0::2] + self.image_bytes[1::2]
 
-		self.secondary = self.image_bytes[0::2]
-		self.primary = self.image_bytes[1::2]
-
-		self.width, self.height = image.size
+		self.width, self.height = image.shape
 		self.size = self.width * self.height
 
 		self.writer = ByteWriter()
 		self.out_path = out_path
 
-		# self.lru_cache = LRUCache(64)
+		self.lru_cache = LRUCache(64)
 		self.hash_array = [Pixel() for _ in range(64)]
 
+		self.stats = [['Section', 'Ratio (x)']]
 		self.info = {
 			'cache': 0,
 			'diff': 0,
@@ -180,20 +192,91 @@ class Encoder:
 		a, b, c, d = self.config['magic']
 		return ord(a) << 24 | ord(b) << 16 | ord(c) << 8 | ord(d)
 
-	def encode(self):
+	def encode_packbits(self):
+
+		print(f'PACKBITS CORE ENCODER FORMAT')
+
+		self.raw_size = self.size * self.config['channels'] * self.config['bytes_per_channel']
+		# self.raw_size = len(self.image_bytes)
+		print(f'Raw File Size: {self.raw_size} bytes')
+
+		if self.raw_size > 400_000_000_000:
+			raise MemoryError(f"Maximum byte count exceeded: {self.raw_size}")
+
+		print(f'INITIAL BYTES: {len(self.reorganized_bytes)}')
+
+		# Write header
+		self.writer.write_4_bytes(self.MAGIC)
+
+		self.writer.write_2_bytes(self.width)
+		self.writer.write_2_bytes(self.height)
+
+		self.writer.write(self.config['channels'])
+		self.writer.write(self.config['bytes_per_channel'])
+
+		if self.config['fractal']:
+			self.curve = GeneralizedHilbertCurve(self.width, self.height, get_index = True)
+			pixel_order = self.curve.generator()
+		else:
+			pixel_order = range(self.size)
+
+		self.packbits = PackBits()
+		packbits_encoded = self.packbits.encode(self.reorganized_bytes)
+		for data in packbits_encoded:
+			self.writer.write(data)
+
+		print(f"AFTER PACKBITS: {len(packbits_encoded)} bytes")
+
+		# Write EOF termination
+		for end in self.config['end_of_file']:
+			self.writer.write(end)
+
+		output = self.writer.output()
+
+		ratio = self.raw_size / len(output)
+		print(f'Initial compression ratio: {round(ratio, 3)}x')
+
+		if self.config['zlib_compression']:
+
+			compressed = zlib.compress(output, level = 9)
+
+			print(f'Zlib compression ratio: {round(len(output) / len(compressed), 3)}x')
+			output = compressed
+
+		if self.out_path is not None:
+			with open(self.out_path, 'wb') as fout:
+				fout.write(output)
+
+		print(f'ZLIB Compressed: {len(output)} bytes')
+
+		ratio = self.raw_size / len(output)
+		print(f'Final compression ratio: {round(ratio, 3)}x')
+
+		return output
+
+	def encode_qoi(self):
+
+		if self.config['verbose']:
+			print(f'[QOI CORE ENCODER FORMAT]\n')
 
 		max_n_bytes = self.size * self.config['channels'] * (self.config['bytes_per_channel'] + 1)
-		print(f'Max Num Bytes: {max_n_bytes}')
-		if max_n_bytes > 400_000_000:
+		# print(f'Max Num Bytes: {max_n_bytes}')
+		if max_n_bytes > 400_000_000_000:
 			raise MemoryError(f"Maximum byte count exceeded: {max_n_bytes}")
 		
-		# write header
+		# Write header
 		self.writer.write_4_bytes(self.MAGIC)
-		self.writer.write_4_bytes(self.width)
-		self.writer.write_4_bytes(self.height)
-		self.writer.write(self.config['channels'])
 
-		# encode pixels
+		# Image dimensions
+		self.writer.write_2_bytes(self.width)
+		self.writer.write_2_bytes(self.height)
+
+		# Color bit depth format
+		self.writer.write(self.config['channels'])
+		self.writer.write(self.config['bytes_per_channel'])
+
+		pixel_jump = self.config['channels'] * self.config['bytes_per_channel']
+
 		run = 0
 
 		prev_pixel = Pixel()
@@ -211,38 +294,15 @@ class Encoder:
 
 			n += 1
 
-			index = self.config['channels'] * i
-			px = self.image_bytes[index : index + self.config['channels']]
+			index = pixel_jump * i
+			px = self.image_bytes[index : index + pixel_jump]
 
 			prev_pixel.update(curr_pixel.bytes)
 			curr_pixel.update(px)
 
-			### APPLE PACKBITS
-			"""
-
-			# https://github.com/psd-tools/packbits/blob/master/src/packbits.py
-
-			# Run length encoding for repeating pixels
-			if curr == prev:
-				run++
-			else: 
-				run = 0
-
-			if 2 > run <= 128:
-				write(run)
-				write(curr)
-				run = 0
-
-			elif curr != prev:
-				
-			
-			"""
-			###
-
 			if curr_pixel == prev_pixel:
 				run += 1
 				if run == 62 or (i + 1) >= self.size:
-					self.info['run'] += 1
 					self.writer.write(Utils.TAG_RUN | (run - 1))
 					run = 0
 				continue
@@ -260,68 +320,82 @@ class Encoder:
 			self.hash_array[index_pos].update(curr_pixel.bytes)
 
 			# hashed = str(curr_pixel)
-			# g = self.lru_cache.get(hashed)
-			# if g != -1:
+			# index_pos = self.lru_cache.get_index(hashed)
+			# get = self.lru_cache.get(hashed)
+			# if get != -1:
 			# 	self.info['cache'] += 1
 			# 	self.writer.write(Utils.TAG_INDEX | index_pos)
 			# 	continue
 			# self.lru_cache.put(hashed, None)
 
-			vr = curr_pixel.red - prev_pixel.red
-			vg = curr_pixel.green - prev_pixel.green
-			vb = curr_pixel.blue - prev_pixel.blue
+			delta = curr_pixel.value - prev_pixel.value
 
-			vg_r = vr - vg
-			vg_b = vb - vg
-
-			if all(-3 < x < 2 for x in (vr, vg, vb)):
+			if -33 < delta < 32:
 				self.info['diff'] += 1
-				self.writer.write(Utils.TAG_DIFF | (vr + 2) << 4 | (vg + 2) << 2 | (vb + 2))
+				self.writer.write(Utils.TAG_DIFF | ((delta + 64) % 64))
 				continue
 
-			elif -33 < vg < 32 and all(-9 < x < 8 for x in (vg_r, vg_b)):
-				self.info['luma'] += 1
-				self.writer.write(Utils.TAG_LUMA | (vg + 32))
-				self.writer.write((vg_r + 8) << 4 | (vg_b + 8))
-				continue
+			# vr = curr_pixel.red - prev_pixel.red
+			# vg = curr_pixel.green - prev_pixel.green
+			# vb = curr_pixel.blue - prev_pixel.blue
 
-			############################################################
-			# TODO: Jump ahead n pixels will help with more patterns
-			# Come back to skipped pixels at the end
-			############################################################
+			# vg_r = vr - vg
+			# vg_b = vb - vg
+
+			# if all(-3 < x < 2 for x in (vr, vg, vb)):
+			# 	self.info['diff'] += 1
+			# 	self.writer.write(Utils.TAG_DIFF | (vr + 2) << 4 | (vg + 2) << 2 | (vb + 2))
+			# 	continue
+
+			# elif -33 < vg < 32 and all(-9 < x < 8 for x in (vg_r, vg_b)):
+			# 	self.info['luma'] += 1
+			# 	self.writer.write(Utils.TAG_LUMA | (vg + 32))
+			# 	self.writer.write((vg_r + 8) << 4 | (vg_b + 8))
+			# 	continue
 
 			# TODO: Try encoding differences here % 256
-			self.info['full'] += 1
-			self.writer.write(Utils.TAG_RGB)
-			self.writer.write(curr_pixel.red)
-			self.writer.write(curr_pixel.green)
-			self.writer.write(curr_pixel.blue)
+			# A, B = (((delta + 256) % 256) & 0xFFFFFFFF).to_bytes(2, sys.byteorder)
 
-		print(json.dumps(self.info))
+			self.info['full'] += 1
+			self.writer.write(Utils.TAG_FULL)
+			self.writer.write_2_bytes(delta)
+
+			# self.writer.write(A)
+			# self.writer.write(B)
+			# self.writer.write(curr_pixel.A)
+			# self.writer.write(curr_pixel.B)
+
+		if self.config['verbose']:
+			print(json.dumps(self.info))
 
 		# Write EOF termination
-		for end in self.config['EOF']:
+		for end in self.config['end_of_file']:
 			self.writer.write(end)
 
 		output = self.writer.output()
 
 		ratio = len(self.image_bytes) / len(output)
-		print(f'Initial compression ratio: {round(ratio, 3)}x')
+		self.stats.append(['Initial', ratio])
 
 		if self.config['zlib_compression']:
 
-			compressed = zlib.compress(output, 
-				level = self.config['zlib_compression_level'])
+			compressed = zlib.compress(output, level = 9)
 
-			print(f'Zlib compression ratio: {round(len(output) / len(compressed), 3)}x')
+			zlib_ratio = len(output) / len(compressed)
+			self.stats.append(['Zlib', zlib_ratio])
+
 			output = compressed
 
+		ratio = len(self.image_bytes) / len(output)
+		self.stats.append(['Final', ratio])
+
+		if self.config['verbose']:
+			table = tabulate(self.stats, headers = 'firstrow', tablefmt = 'simple_outline')
+			print(table)
+		
 		if self.out_path is not None:
 			with open(self.out_path, 'wb') as fout:
 				fout.write(output)
-
-		ratio = len(self.image_bytes) / len(output)
-		print(f'Final compression ratio: {round(ratio, 3)}x')
 
 		return output
 
@@ -345,6 +419,51 @@ class Decoder:
 		a, b, c, d = self.config['magic']
 		return ord(a) << 24 | ord(b) << 16 | ord(c) << 8 | ord(d)
 
+	def decode_packbits(self):
+
+		header_magic = self.reader.read_4_bytes()
+
+		print(header_magic)
+
+		if header_magic != self.MAGIC:
+			raise ValueError('Image does not contain valid header')
+
+		self.width = self.reader.read_2_bytes()
+		self.height = self.reader.read_2_bytes()
+
+		print(self.width, self.height)
+
+		self.channels = self.reader.read()
+		self.bytes_per_channel = self.reader.read()
+
+		print(self.channels, self.bytes_per_channel)
+
+		self.shape = (self.width, self.height)
+		self.size = self.width * self.height
+		self.total_size = self.width * self.height * self.channels * self.bytes_per_channel
+
+		self.pixel_data = bytearray(self.total_size)
+
+		start = 10
+		end = -8 # -len(self.config['end_of_file'])
+
+		rest = self.reader.bytes[start + 1 : end]
+		self.packbits = PackBits()
+		decoded = self.packbits.decode(rest)
+
+		print(len(decoded))
+		return
+
+		# l = len(decoded) / self.bytes_per_channel
+		# a = decoded[:]
+		
+		if self.out_path is not None:
+			image = Image.frombuffer('RGB', self.shape, bytes(self.pixel_data), 'raw')
+			image.save(self.out_path, format = self.config['decode_format'])
+
+		return self.pixel_data
+	
+	
 	def decode(self):
 
 		header_magic = self.reader.read_4_bytes()
@@ -352,13 +471,17 @@ class Decoder:
 		if header_magic != self.MAGIC:
 			raise ValueError('Image does not contain valid header')
 
-		self.width = self.reader.read_4_bytes()
-		self.height = self.reader.read_4_bytes()
+		self.width = self.reader.read_2_bytes()
+		self.height = self.reader.read_2_bytes()
+
 		self.channels = self.reader.read()
+		self.bytes_per_channel = self.reader.read()
+
+		pixel_jump = self.channels * self.bytes_per_channel
 
 		self.shape = (self.width, self.height)
 		self.size = self.width * self.height
-		self.total_size = self.width * self.height * self.channels
+		self.total_size = self.width * self.height * pixel_jump
 
 		self.pixel_data = bytearray(self.total_size)
 
@@ -382,9 +505,9 @@ class Decoder:
 			self.hash_array[index_pos].update(pixel.bytes)
 
 			if index >= 0:
-				self.pixel_data[index:index + self.channels] = pixel.bytes
+				self.pixel_data[index : index + pixel_jump] = pixel.bytes
 
-			index = self.config['channels'] * i
+			index = pixel_jump * i
 
 			if run > 0:
 				run -= 1
@@ -394,8 +517,22 @@ class Decoder:
 			if data is None:
 				break
 
-			if data == Utils.TAG_RGB:
-				new_value = bytes((self.reader.read() for _ in range(3)))
+			"""
+			A, B = (((delta + 256) % 256) & 0xFFFFFFFF).to_bytes(2, sys.byteorder)
+
+			self.info['full'] += 1
+			self.writer.write(Utils.TAG_FULL)
+			self.writer.write(A)
+			self.writer.write(B)
+			"""
+		
+			if data == Utils.TAG_FULL:
+				# FIXME THESE ARE DELTAS
+
+				delta = self.reader.read_2_bytes()
+				
+				# recovered = (prev_pixel.value + (delta - 256)) % 256
+				
 				pixel.update(new_value)
 				continue
 
@@ -403,21 +540,31 @@ class Decoder:
 				pixel.update(self.hash_array[data].bytes)
 				continue
 
-			if (data & Utils.TAG_MASK) == Utils.TAG_DIFF:
-				red = (pixel.red + ((data >> 4) & 0x03) - 2) % 256
-				green = (pixel.green + ((data >> 2) & 0x03) - 2) % 256
-				blue = (pixel.blue + (data & 0x03) - 2) % 256
-				pixel.update(bytes((red, green, blue)))
+			"""
+			delta = curr_pixel.value - prev_pixel.value
+
+			if -33 < delta < 32:
+				self.info['diff'] += 1
+				self.writer.write(Utils.TAG_DIFF | ((delta + 64) % 64))
 				continue
 
-			if (data & Utils.TAG_MASK) == Utils.TAG_LUMA:
-				b2 = self.reader.read()
-				vg = ((data & 0x3f) % 256) - 32
-				red = (pixel.red + vg - 8 + ((b2 >> 4) & 0x0f)) % 256
-				green = (pixel.green + vg) % 256
-				blue = (pixel.blue + vg - 8 + (b2 & 0x0f)) % 256
-				pixel.update(bytes((red, green, blue)))
+			"""
+
+			if (data & Utils.TAG_MASK) == Utils.TAG_DIFF:
+				# red = (pixel.red + ((data >> 4) & 0x03) - 2) % 256
+				# green = (pixel.green + ((data >> 2) & 0x03) - 2) % 256
+				# blue = (pixel.blue + (data & 0x03) - 2) % 256
+				pixel.update(bytes((A, B)))
 				continue
+
+			# if (data & Utils.TAG_MASK) == Utils.TAG_LUMA:
+			# 	b2 = self.reader.read()
+			# 	vg = ((data & 0x3f) % 256) - 32
+			# 	red = (pixel.red + vg - 8 + ((b2 >> 4) & 0x0f)) % 256
+			# 	green = (pixel.green + vg) % 256
+			# 	blue = (pixel.blue + vg - 8 + (b2 & 0x0f)) % 256
+			# 	pixel.update(bytes((red, green, blue)))
+			# 	continue
 
 			if (data & Utils.TAG_MASK) == Utils.TAG_RUN:
 				run = (data & 0x3f)

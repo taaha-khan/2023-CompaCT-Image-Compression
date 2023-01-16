@@ -8,15 +8,17 @@ sys.path.append(os.path.join('scripts', '..', 'src'))
 import json
 import time
 import random
-import pydicom
 
 import concurrent.futures as processor
 from tabulate import tabulate
 from tqdm import tqdm
 
+import pydicom
+from PIL import Image
+
 from codec.core import Encoder, Decoder
 
-def new_compressor(path):
+def new_compressor(path, config):
 
 	FILE = 'File'
 	RATIO = 'Ratio (x)'
@@ -41,14 +43,14 @@ def new_compressor(path):
 
 	start = time.process_time()
 
-	ds.compress(pydicom.uid.RLELossless, image) #, encoding_plugin = 'pylibjpeg')
-	tmp_saved = f"C:/Users/taaha/Downloads/rle_ct_dataset/{os.path.basename(path)}"
-	ds.save_as(tmp_saved)
-	compressed_size = os.path.getsize(tmp_saved) # bytes
+	# ds.compress(pydicom.uid.RLELossless, image) #, encoding_plugin = 'pylibjpeg')
+	# tmp_saved = f'C:/Users/taaha/Downloads/rle_ct_dataset/{os.path.basename(path)}'
+	# ds.save_as(tmp_saved)
+	# compressed_size = os.path.getsize(tmp_saved) # bytes
 
-	# encoder = Encoder(config, image, None)
-	# compressed = encoder.encode()
-	# compressed_size = len(compressed) # bytes
+	encoder = Encoder(config, image, None)
+	compressed = encoder.encode_packbits()
+	compressed_size = len(compressed) # bytes
 
 	output[TIME] = time.process_time() - start
 	output[RATIO] = original_size / compressed_size
@@ -70,8 +72,10 @@ def main():
 	with processor.ProcessPoolExecutor() as executor:
 
 		for filename in os.listdir(dataset_directory):
+			if not filename.endswith('dcm'):
+				continue
 			path = dataset_directory + filename
-			processes.append(executor.submit(new_compressor, path))
+			processes.append(executor.submit(new_compressor, path, config))
 
 		print(f'Queued to compress {len(processes)} testing images on {os.cpu_count()} threads')
 
