@@ -22,12 +22,15 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 """
 
+import sys
 
 class PackBits:
 
 	MAX_LENGTH = 127
 
-	def __init__(self):
+	def __init__(self, apply_delta_transform = False):
+
+		self.apply_delta_transform = apply_delta_transform
 
 		self.result = bytearray()
 
@@ -36,6 +39,26 @@ class PackBits:
 		self.run = 0
 
 		self.pos = 0
+
+	def delta_transform(self, data):
+		deltas = []
+		deltas.append(data[0])
+		for i in range(1, len(data)):
+			delta = data[i] - data[i - 1]
+			unsigned = (delta + (1 << 8)) % 256
+			deltas.append(unsigned)
+		return deltas
+	
+	def revert_delta_transform(self, data):
+		output = []
+		output.append(data[0])
+		for i in range(1, len(data)):
+			delta = data[i]
+			if delta > 127:
+				delta -= 256
+			recovered = (output[i - 1] + delta) % 256
+			output.append(recovered)
+		return output
 
 	def finish_raw(self):
 		if len(self.buf) == 0:
@@ -48,14 +71,6 @@ class PackBits:
 		self.result.append(256 - (self.run - 1))
 		self.result.append(self.data[self.pos])
 
-	def delta_transform(self, data):
-		deltas = []
-		deltas.append(data[0])
-		for i in range(1, len(data)):
-			delta = ((data[i] - data[i - 1]) + 256) % 256
-			deltas.append(delta)
-		return deltas
-
 	def encode(self, data):
 		"""
 		Encodes data using PackBits encoding.
@@ -67,17 +82,21 @@ class PackBits:
 		if len(data) == 1:
 			return b'\x00' + data
 
-		# data = self.delta_transform(data)
+		if self.apply_delta_transform:
+			data = self.delta_transform(data)
+
 		self.data = bytearray(data)
 
 		while self.pos < len(self.data) - 1:
 			
 			if self.data[self.pos] == self.data[self.pos + 1]:
+				
 				if self.state == 'RAW':
 					# end of RAW data
 					self.finish_raw()
 					self.state = 'RLE'
 					self.run = 1
+
 				elif self.state == 'RLE':
 					if self.run == self.MAX_LENGTH:
 						# restart the encoding
@@ -87,16 +106,17 @@ class PackBits:
 					self.run += 1
 
 			else:
+
 				if self.state == 'RLE':
 					self.run += 1
 					self.finish_rle()
 					self.state = 'RAW'
 					self.run = 0
+
 				elif self.state == 'RAW':
 					if len(self.buf) == self.MAX_LENGTH:
 						# restart the encoding
 						self.finish_raw()
-
 					self.buf.append(self.data[self.pos])
 
 			self.pos += 1
@@ -137,21 +157,21 @@ class PackBits:
 				self.result.extend([self.data[self.pos]] * (1 - header))
 				self.pos += 1
 
+		if self.apply_delta_transform:
+			self.result = self.revert_delta_transform(self.result)
+
 		return self.result
 		# return bytes(self.result)
 
 if __name__ == '__main__':
 
-	import base64
-
-	data = [3, 3, 3, 3, 4] * 129
-
+	data = [3, 255, 3, 255, 3, 255, 3, 255, 20, 255]
 	print(data)
 
 	pack = PackBits()
 
 	encoded = pack.encode(data)
-	print(base64.b64encode(encoded))
+	print(encoded)
 
 	decoded = pack.decode(encoded)
-	print(base64.b64encode(decoded))
+	print(decoded)

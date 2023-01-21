@@ -7,7 +7,6 @@ class Partitioner:
 
 		self.data = data
 		self.size = len(data)
-		self.indexes = [[i] for i in range(len(data))]
 
 		self.min_block_size = min_block_size
 
@@ -107,14 +106,61 @@ class Partitioner:
 		# print(joins)
 
 		return
+	
+	def near(self, delta):
+		return -32 < delta < 33
+
+	def iterative_joining(self):
+
+		first = 0
+
+		# Continue until best chaining is found
+		while True:
+
+			section = data[first]
+
+			# Look at all next thingies
+			for i in range(first + 1, len(data)):
+				next_section = data[i]
+
+				if self.near(section[-1] - next_section[0]):
+					print(f'JUMP TO INDEX {i}')
+					first = i
+					break
+		
+			if i == len(data) - 1:
+				pass
+
+	def initial_cluster(self):
+
+		self.clusters = self.data.copy()
+
+		for i in range(len(self.clusters) - 1, 0, -1):
+
+			prev = self.clusters[i - 1]
+			curr = self.clusters[i]
+
+			delta = curr[-1] - prev[0]
+
+			if self.near(delta):
+				self.clusters[i] = self.clusters[i - 1] + self.clusters[i]
+				self.clusters.pop(i - 1)
+
+		self.indexes = [[i] for i in range(len(self.clusters))]
+
+		print(self.clusters)
+		print(self.indexes)
+
 
 if __name__ == '__main__':
 
 	import random
 	random.seed(0)
 
-	data = [0, 0, 1, 1, 0, 1, 0, 0]
-	# data = [10, 0, 0, 255, 255, 254, 230, 10, 11, 0, 2, 234, 219, 50, 100] # * 100
+	# data = [0, 0, 1, 1, 0, 1, 0, 0]
+	data = [10, 0, 0, 32, 255, 255, 254, 230, 10, 11, 0, 2, 234, 219, 50, 100, 101] # * 100
+
+	print(data)
 
 	# data = [random.randint(0, 255) for i in range(20)]
 
@@ -123,16 +169,19 @@ if __name__ == '__main__':
 	# print(data)
 
 	p = Partitioner(data)
+	p.initial_cluster()
+
+	# p.iterative_joining()
 
 	it = 0
 
-	while len(data) > 1:
-		# p.join_adj()
-		p.join_all()
-		it += 1
-		# print(it, len(data))
+	# while len(data) > 1:
+	# 	# p.join_adj()
+	# 	p.join_all()
+	# 	it += 1
+	# 	# print(it, len(data))
 	
-	print(p.indexes)
+	# print(p.indexes)
 
 	# ps = p.set_prefix_sum(data)
 	# print(ps)

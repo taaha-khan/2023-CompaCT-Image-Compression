@@ -8,6 +8,7 @@ sys.path.append(os.path.join('scripts', '..', 'src'))
 import json
 import time
 import random
+import glob
 
 import concurrent.futures as processor
 from tabulate import tabulate
@@ -18,14 +19,15 @@ from PIL import Image
 
 from codec.core import Encoder, Decoder
 
+FILE = 'File'
+RATIO = 'Ratio (x)'
+SAVED = 'Space Saved (%)'
+TIME = 'Time (s)'
+
 def new_compressor(path, config):
 
-	FILE = 'File'
-	RATIO = 'Ratio (x)'
-	SAVED = 'Space Saved (%)'
-	TIME = 'Time (s)'
-
-	r = random.uniform(0.0, 10.0)
+	# r = random.uniform(0.0, 10.0)
+	r = 1.0
 
 	output = {
 		FILE: os.path.basename(path), 
@@ -43,13 +45,15 @@ def new_compressor(path, config):
 
 	start = time.process_time()
 
-	# ds.compress(pydicom.uid.RLELossless, image) #, encoding_plugin = 'pylibjpeg')
+	# ds.compress(pydicom.uid.RLELossless, image, encoding_plugin = 'pylibjpeg')
 	# tmp_saved = f'C:/Users/taaha/Downloads/rle_ct_dataset/{os.path.basename(path)}'
 	# ds.save_as(tmp_saved)
 	# compressed_size = os.path.getsize(tmp_saved) # bytes
 
 	encoder = Encoder(config, image, None)
-	compressed = encoder.encode_packbits()
+	compressed = encoder.encode_qoi()
+	# compressed = encoder.encode_packbits()
+	# compressed = encoder.encode_deflate()
 	compressed_size = len(compressed) # bytes
 
 	output[TIME] = time.process_time() - start
@@ -64,18 +68,22 @@ def main():
 	config = json.load(open('src/config.json', 'r'))
 	config['verbose'] = False
 
-	dataset_directory = 'C:/Users/taaha/Downloads/ct_nonequi_tilt/'
+	# dataset_directory = 'C:/Users/taaha/Downloads/ct_nonequi_tilt/'
+	# dataset_directory = 'C:/Users/taaha/Downloads/manifest-OtXaMwL56190865641215613043/QIN LUNG CT/R0223/12-05-2001-NA-CT CHEST WITH CONTRAST-15336/2.000000-NA-08982/'
+	dataset_directory = 'C:/Users/taaha/Downloads/manifest-OtXaMwL56190865641215613043/QIN LUNG CT/'
 
 	processes = []
 	outputs = []
 	
 	with processor.ProcessPoolExecutor() as executor:
 
-		for filename in os.listdir(dataset_directory):
-			if not filename.endswith('dcm'):
+		for n, filename in enumerate(glob.glob(dataset_directory + '**/*.dcm', recursive = True)):
+			if os.path.basename(filename).startswith('1-1'):
 				continue
-			path = dataset_directory + filename
-			processes.append(executor.submit(new_compressor, path, config))
+			processes.append(executor.submit(new_compressor, filename, config))
+			
+			if n > 200:
+				break
 
 		print(f'Queued to compress {len(processes)} testing images on {os.cpu_count()} threads')
 
@@ -87,7 +95,26 @@ def main():
 	print('\n')
 
 	table = tabulate(outputs, headers = 'keys', tablefmt = 'simple_outline') # .replace('-', '━')
+	# print(table)
+
+	ratios = 0.0
+	times = 0.0
+
+	for output in outputs:
+		times += output[TIME]
+		ratios += output[RATIO]
+
+	times /= len(outputs)
+	ratios /= len(outputs)
+
+	info = []
+	info.append(['Metric', 'Value'])
+	info.append(['Mean ' + RATIO, ratios])
+	info.append(['Mean ' + TIME, times])
+
+	table = tabulate(info, headers = 'firstrow', tablefmt = 'simple_outline')
 	print(table)
+
 
 
 if __name__ == '__main__':

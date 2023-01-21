@@ -3,6 +3,7 @@ import sys
 sys.dont_write_bytecode = True
 
 from PIL import Image
+import numpy as np
 import pydicom
 import argparse
 import time
@@ -35,6 +36,10 @@ def main():
 	config = json.load(open(('src/' if directory != 'src' else '') + 'config.json', 'r'))
 	# print(json.dumps(config))
 
+	DEMO_IMAGE_PATH = "C:/Users/taaha/Downloads/manifest-OtXaMwL56190865641215613043/QIN LUNG CT/QIN-LSC-0055/07-27-2003-1-CT Thorax wo Contrast-86597/5.000000-THORAX WO  3.0  B41 Soft Tissue-77621/1-016.dcm"
+	image = pydicom.read_file(DEMO_IMAGE_PATH).pixel_array
+
+
 	if args.encode:
 
 		"""
@@ -49,16 +54,16 @@ def main():
 				return
 		"""
 
-		path = "C:/Users/taaha/Downloads/manifest-OtXaMwL56190865641215613043/QIN LUNG CT/QIN-LSC-0055/07-27-2003-1-CT Thorax wo Contrast-86597/5.000000-THORAX WO  3.0  B41 Soft Tissue-77621/1-016.dcm"
-
-		image = pydicom.read_file(path).pixel_array
+		# path = DEMO_IMAGE_PATH
+		# image = pydicom.read_file(path).pixel_array
 
 		# out_path = get_filename(args.file_path, True, config)
-		out_path = 'data/encoded_temp.khn'
+		out_path = 'data/testing.khn'
 
 		encoder = Encoder(config, image, out_path)
-		encoder.encode_packbits()
+		# encoder.encode_deflate()
 		# encoder.encode_qoi()
+		encoder.encode_packbits()
 
 		# print(f'\"{path}\" encoded to \"{out_path}\"')
 		# print(f'{args.file_path} encoded to {out_path}')
@@ -71,9 +76,13 @@ def main():
 		out_path = get_filename(args.file_path, False, config)
 
 		decoder = Decoder(config, file_bytes, out_path)
-		decoder.decode_packbits()
+		output = decoder.decode_qoi()
 
-		print(f'{args.file_path} decoded to {out_path}')
+		error_matrix = output == image
+		error = np.size(error_matrix) - np.count_nonzero(error_matrix)
+		print(f'Reconstruction Error: {error}')
+
+		# print(f'{args.file_path} decoded to {out_path}')
 
 if __name__ == '__main__':
 	main()

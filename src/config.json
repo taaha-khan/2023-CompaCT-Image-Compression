@@ -8,11 +8,12 @@
 	"channels": 1,
 	"bytes_per_channel": 2,
 
-	"end_of_file": [0, 0, 0, 0, 0, 0, 0, 1],
-
-	"fractal": false,
+	"delta_transform": true,
+	"fractal_transform": true,
 
 	"zlib_compression": true,
+
+	"end_of_file": [0, 0, 0, 0, 0, 0, 0, 1],
 
 	"verbose": true
 

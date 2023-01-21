@@ -5,18 +5,20 @@
 ## Title Ideas
 
 **Keywords**
-- Improved/Applying/With/Through
+- Improved/Applying/With/Through/Via
 - Lossless, Perfect Quality
-- HDR (High Dynamic Range), High (Bit) Depth
+- HDR (High Dynamic Range), High (Bit/Color) Depth
 - Image Compression
 - CT (Computed Tomography) Scan
 - Pixel
 - Fractal
 - Topological
-- Reordering/Restructering
-- Heuristic Hierarical Clustering/Segmentation
+- Reordering/Restructering/Transform
+- Heuristic Hierarchical Clustering/Segmentation
 
-**TITLE: Lossless High Bit Depth Computed Tomography Scan Compression Applying Fractal Topological Pixel Reordering with Heuristic Hierarical Segmentation**
+**High Color Depth CT Scan Compression Applying Heuristic Hierarchical Clustering and Fractal Topological Pixel Reordering**
+
+**Heuristic Hierarchical Clustering and Fractal Topological Pixel Reordering for High Color Depth CT Scan Compression**
 
 ## Completed
 - Port QOI and Gilbert for python
@@ -25,20 +27,18 @@
 - Get SRGB and HDR testing datasets
 
 ## TODO
-- QOI: Port to HDR byte format
+- CACHE: All previous values, index to most recent or most common 64 pixel colors for cache that AREN'T within delta limit
+- **TILE COMPRESSION: Group pixels into (hilbert cluster?) sections and encode RLE in as single cluster**
 - Hirerichal Clustering: Create section skipping algorithm (binary search?)
 - Compare compression ratio, BPP with competitors
 - Write up slideshow and abstract
 
 ## Lossless Encoder
 
-- More than 8 bits per color component (16? 32?) for [HDR](https://en.wikipedia.org/wiki/Multi-exposure_HDR_capture) user market (medical, photography, security)
-
-	- **32 bits**:
-		- 96 bits total per pixel = 12 bytes per pixel
-		- Any way to condense N consecutive pixels into less than 12N bytes
+- More than 8 bits per color component (16) for [HDR](https://en.wikipedia.org/wiki/Multi-exposure_HDR_capture) user market (medical)
 
 - Improved RGB color transform ([YCoCg-R](https://en.wikipedia.org/wiki/YCoCg#The_lifting-based_YCoCg-R_variation)?)
+
 - Consider all (A, B, C) color components as one collective "pixel"
 
 - Read image pixel deltas in redundancy creating order for easier deflation in final compression stage (Raster scan is suboptimal because it jumps from right edge to the left, which can't gurantee significant correlation)
@@ -94,37 +94,37 @@
 
 		**Every mf already done this**
 	
-- Apply QOI or PackBits based condense algorithm (prefer byte alignment with type tags)
+- Apply QOI or PackBits based condense algorithm (prefer byte alignment)
 	1. Run-length encoding
 	2. Recent palette cache index
 	3. Near previous difference encoding
 	4. Near previous 2-byte difference encoding
 	5. Last case: Full pixel values
 
-- Apply Post-processing compression
-	- DEFLATE (LZ77 + Huffman coding) (slow, decent effect, simple)
-	- Arithmetic coding (slow, best effect, unfamiliar)
+- Apply Post-processing DEFLATE (LZ77 + Huffman coding)
 
-## Compare Compression Ratio, BPP, Space Saved, Speed
-- Public compression datasets
+## Compare Compression Ratio, Speed
 - Lossless: PNG, WebP, FLIF, JPEG-LS, JPEG2000, QOI, [HDR](https://en.wikipedia.org/wiki/Category:High_dynamic_range_file_formats)
 - DICOM ALGORITHM: https://pydicom.github.io/pydicom/dev/tutorials/pixel_data/compressing.html#compressing-using-pydicom
 
 ## Important Sources
 
-### QOI
-- [Blog](https://phoboslab.org/log/2021/11/qoi-fast-lossless-image-compression)
-- [Source](https://github.com/phoboslab/qoi)
-- [Python Port](https://github.com/mathpn/py-qoi)
-- [Interesting Analysis](https://wiesmann.codiferes.net/wordpress/archives/33156)
+### Lossless Compression
+- [QOI Blog](https://phoboslab.org/log/2021/11/qoi-fast-lossless-image-compression)
+- [QOI Source](https://github.com/phoboslab/qoi)
+- [QOI Python Port](https://github.com/mathpn/py-qoi)
+- [QOI Analysis](https://wiesmann.codiferes.net/wordpress/archives/33156)
 - [WEBP Spec](https://developers.google.com/speed/webp/docs/webp_lossless_bitstream_specification)
+- [PNG YouTube](https://www.youtube.com/watch?v=EFUYNoFRHQI)
 
-### HDR CT Dataset
+### DICOM CT Dataset
 - [GE, non-equistant, gantry/detector tilt](https://www.aliza-dicom-viewer.com/download/datasets)
-- [QIN LUNG CT](https://wiki.cancerimagingarchive.net/display/Public/QIN+LUNG+CT#19039647a520d4e15ee04e84bf26ec185e5403b7)
-
-### HDR
+- **[QIN LUNG CT Dataset](https://wiki.cancerimagingarchive.net/display/Public/QIN+LUNG+CT#19039647a520d4e15ee04e84bf26ec185e5403b7)**
 - [Laws and HDR Usages](researchgate.net/profile/David-Clunie/publication/283356591_What_is_Different_About_Medical_Image_Compression/links/56376a3708aeb786b7044b8a/What-is-Different-About-Medical-Image-Compression.pdf)
+- [DICOM Standard](https://dicom.nema.org/medical/Dicom/2016e/output/chtml/part05/sect_8.2.html)
+
+### Autoencoder
+- [Autoencoder Demo](https://www.datacamp.com/tutorial/reconstructing-brain-images-deep-learning)
 
 ### Project Structure Notation
 - [Simple Documentation](https://github.com/mitcommlab/Coding-Documentation/blob/master/File-Structure-Case-Studies.md#case-study-2-a-simple-hierarchy)

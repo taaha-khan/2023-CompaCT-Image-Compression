@@ -27,47 +27,59 @@ SOFTWARE.
 from collections import OrderedDict
 from tabulate import tabulate
 from PIL import Image
+import matplotlib.pyplot as plt
+import numpy as np
+import tqdm
 import json
 import zlib
 import sys
 
 from codec.curve import GeneralizedHilbertCurve
 from codec.packbits import PackBits
- 
-class LRUCache:
-
-	def __init__(self, capacity: int):
-		self.cache = OrderedDict()
-		self.capacity = capacity
- 
-	def get(self, key: int) -> int:
-		if key not in self.cache:
-			return -1
-		self.cache.move_to_end(key)
-		return self.cache[key]
-
-	def get_index(self, key):
-		if key not in self.cache:
-			return -1
-		return list(self.cache.keys()).index(key)
- 
-	def put(self, key: int, value: int) -> None:
-		self.cache[key] = value
-		self.cache.move_to_end(key)
-		if len(self.cache) > self.capacity:
-			self.cache.popitem(last = False)
 
 # chunk tags
 class Utils:
+
 	TAG_MASK = 0xc0  # 11000000
 
-	TAG_INDEX = 0x00  # 00xxxxxx
-	TAG_DIFF = 0x40  # 01xxxxxx
-	TAG_LUMA = 0x80  # 10xxxxxx
 	TAG_RUN = 0xc0  # 11xxxxxx
-	TAG_FULL = 0xfe  # 11111110
+	TAG_DELTA = 0x40  # 01xxxxxx
+	TAG_CACHE = 0x00  # 00xxxxxx
+	# TAG_FULL = 0x80  # 10xxxxxx
 
-	TAG_CLUSTER = 0xff # 11111111
+	# TAG_FULL_OLD = 0xfe  # 11111110
+
+	TAG_FULL = 0xff # 11111111
+
+def unsign(x, n_bits):
+	max_value = 2 ** n_bits # same as 1 << n_bits
+	return (x + max_value) % max_value
+
+def signed(x, n_bits):
+	max_value = 2 ** n_bits
+	if x > max_value / 2:
+		x -= max_value
+	return x
+
+class Cache:
+
+	def __init__(self):
+		self.data = []
+	
+	def contains(self, value):
+		return value in self.data
+	
+	def add(self, value):
+		if self.contains(value):
+			value = self.data.pop(self.data.index(value))
+		self.data.insert(0, value)
+		if len(self.data) > 64:
+			self.data.pop()
+
+	def get_index(self, value):
+		if self.contains(value):
+			return self.data.index(value)
+		return None
 
 class Pixel:
 
@@ -78,7 +90,6 @@ class Pixel:
 
 	def update(self, values: bytes) -> None:
 		self.px_bytes[0 : self.n] = values
-		# FIXME CHECK BYTEORDER
 		self.value = int.from_bytes(self.px_bytes, byteorder = sys.byteorder)
 
 	def __str__(self) -> str:
@@ -87,21 +98,16 @@ class Pixel:
 	def __eq__(self, other):
 		return self.px_bytes == other.px_bytes
 
+	def __hash__(self):
+		return self.value
+
 	@property
 	def bytes(self) -> bytes:
 		return bytes(self.px_bytes)
 
 	@property
-	def hash(self) -> int:
+	def wrap_hash(self) -> int:
 		return self.value % 64
-
-	@property
-	def A(self):
-		return self.px_bytes[0]
-	
-	@property
-	def B(self):
-		return self.px_bytes[1]
 
 class ByteWriter:
 
@@ -157,6 +163,8 @@ class ByteReader:
 	def output(self):
 		return bytes(self.bytes[0 : self.read_pos])
 
+
+
 class Encoder:
 
 	def __init__(self, config, image, out_path = None):
@@ -175,13 +183,13 @@ class Encoder:
 		self.writer = ByteWriter()
 		self.out_path = out_path
 
-		self.lru_cache = LRUCache(64)
 		self.hash_array = [Pixel() for _ in range(64)]
+		# self.cache = Cache()
 
-		self.stats = [['Section', 'Ratio (x)']]
+		self.stats = [['Section', 'Size (KB)', 'Ratio (x)']]
 		self.info = {
 			'cache': 0,
-			'diff': 0,
+			'delta': 0,
 			'luma': 0,
 			'run': 0,
 			'full': 0
@@ -191,41 +199,99 @@ class Encoder:
 	def MAGIC(self):
 		a, b, c, d = self.config['magic']
 		return ord(a) << 24 | ord(b) << 16 | ord(c) << 8 | ord(d)
+	
+	def encode_deflate(self):
 
-	def encode_packbits(self):
-
-		print(f'PACKBITS CORE ENCODER FORMAT')
+		if self.config['verbose']:
+			print(f'[DEFLATE CORE ENCODER FORMAT]')
 
 		self.raw_size = self.size * self.config['channels'] * self.config['bytes_per_channel']
-		# self.raw_size = len(self.image_bytes)
-		print(f'Raw File Size: {self.raw_size} bytes')
+
+		self.stats.append(['Original', self.raw_size / 1000, 1.0])
 
 		if self.raw_size > 400_000_000_000:
 			raise MemoryError(f"Maximum byte count exceeded: {self.raw_size}")
 
-		print(f'INITIAL BYTES: {len(self.reorganized_bytes)}')
+		# Write header
+		self.writer.write_4_bytes(self.MAGIC)
+
+		# Write dimensions
+		self.writer.write_2_bytes(self.width)
+		self.writer.write_2_bytes(self.height)
+
+		# Write color bit depth
+		self.writer.write(self.config['channels'])
+		self.writer.write(self.config['bytes_per_channel'])
+
+		# Fractal configuration
+		self.writer.write(int(self.config['fractal_transform']))
+
+		if self.config['fractal_transform']:
+			self.curve = GeneralizedHilbertCurve(self.width, self.height, get_index = True)
+			pixel_order = self.curve.generator()
+		else:
+			pixel_order = range(self.size)
+		
+		output = self.image_bytes
+
+		if self.config['zlib_compression']:
+
+			compressed = zlib.compress(output, level = 9)
+		
+			zlib_ratio = len(output) / len(compressed)
+			self.stats.append(['DEFLATE', len(compressed) / 1000, zlib_ratio])
+
+			output = compressed
+
+		ratio = self.raw_size / len(output)
+		self.stats.append(['Final', len(output) / 1000, ratio])
+
+		if self.config['verbose']:
+			table = tabulate(self.stats, headers = 'firstrow', tablefmt = 'simple_outline')
+			print(table)
+
+		if self.out_path is not None:
+			with open(self.out_path, 'wb') as fout:
+				fout.write(output)
+
+		return output
+
+	def encode_packbits(self):
+
+		if self.config['verbose']:
+			print(f'[PACKBITS CORE ENCODER FORMAT]')
+
+		self.raw_size = self.size * self.config['channels'] * self.config['bytes_per_channel']
+
+		self.stats.append(['Original', self.raw_size / 1000, 1.0])
+
+		if self.raw_size > 400_000_000_000:
+			raise MemoryError(f"Maximum byte count exceeded: {self.raw_size}")
 
 		# Write header
 		self.writer.write_4_bytes(self.MAGIC)
 
+		# Write dimensions
 		self.writer.write_2_bytes(self.width)
 		self.writer.write_2_bytes(self.height)
 
+		# Write color bit depth
 		self.writer.write(self.config['channels'])
 		self.writer.write(self.config['bytes_per_channel'])
 
-		if self.config['fractal']:
+		# Fractal configuration
+		self.writer.write(int(self.config['fractal_transform']))
+
+		if self.config['fractal_transform']:
 			self.curve = GeneralizedHilbertCurve(self.width, self.height, get_index = True)
 			pixel_order = self.curve.generator()
 		else:
 			pixel_order = range(self.size)
 
-		self.packbits = PackBits()
+		self.packbits = PackBits(self.config['delta_transform'])
 		packbits_encoded = self.packbits.encode(self.reorganized_bytes)
 		for data in packbits_encoded:
 			self.writer.write(data)
-
-		print(f"AFTER PACKBITS: {len(packbits_encoded)} bytes")
 
 		# Write EOF termination
 		for end in self.config['end_of_file']:
@@ -234,35 +300,40 @@ class Encoder:
 		output = self.writer.output()
 
 		ratio = self.raw_size / len(output)
-		print(f'Initial compression ratio: {round(ratio, 3)}x')
+		self.stats.append(['PackBits', len(output) / 1000, ratio])
 
 		if self.config['zlib_compression']:
 
 			compressed = zlib.compress(output, level = 9)
+		
+			zlib_ratio = len(output) / len(compressed)
+			self.stats.append(['DEFLATE', len(compressed) / 1000, zlib_ratio])
 
-			print(f'Zlib compression ratio: {round(len(output) / len(compressed), 3)}x')
 			output = compressed
+
+		ratio = self.raw_size / len(output)
+		self.stats.append(['Final', len(output) / 1000, ratio])
+
+		if self.config['verbose']:
+			table = tabulate(self.stats, headers = 'firstrow', tablefmt = 'simple_outline')
+			print(table)
 
 		if self.out_path is not None:
 			with open(self.out_path, 'wb') as fout:
 				fout.write(output)
 
-		print(f'ZLIB Compressed: {len(output)} bytes')
-
-		ratio = self.raw_size / len(output)
-		print(f'Final compression ratio: {round(ratio, 3)}x')
-
 		return output
-
+	
 	def encode_qoi(self):
 
 		if self.config['verbose']:
-			print(f'[QOI CORE ENCODER FORMAT]\n')
+			print(f'[QOI CORE ENCODER FORMAT]')
 
-		max_n_bytes = self.size * self.config['channels'] * (self.config['bytes_per_channel'] + 1)
-		# print(f'Max Num Bytes: {max_n_bytes}')
-		if max_n_bytes > 400_000_000_000:
-			raise MemoryError(f"Maximum byte count exceeded: {max_n_bytes}")
+		self.raw_size = self.size * self.config['channels'] * self.config['bytes_per_channel']
+		if self.raw_size > 400_000_000_000:
+			raise MemoryError(f"Maximum byte count exceeded: {self.raw_size}")
+
+		self.stats.append(['Original', self.raw_size / 1000, 1.0])
 		
 		# Write header
 		self.writer.write_4_bytes(self.MAGIC)
@@ -275,6 +346,9 @@ class Encoder:
 		self.writer.write(self.config['channels'])
 		self.writer.write(self.config['bytes_per_channel'])
 
+		# Fractal configuration
+		self.writer.write(int(self.config['fractal_transform']))
+
 		pixel_jump = self.config['channels'] * self.config['bytes_per_channel']
 
 		run = 0
@@ -284,12 +358,13 @@ class Encoder:
 
 		n = -1
 		
-		if self.config['fractal']:
+		if self.config['fractal_transform']:
 			self.curve = GeneralizedHilbertCurve(self.width, self.height, get_index = True)
 			pixel_order = self.curve.generator()
 		else:
 			pixel_order = range(self.size)
 
+		# for i in tqdm.tqdm(pixel_order, total = self.size):
 		for i in pixel_order:
 
 			n += 1
@@ -300,6 +375,7 @@ class Encoder:
 			prev_pixel.update(curr_pixel.bytes)
 			curr_pixel.update(px)
 
+			# Run length encoding
 			if curr_pixel == prev_pixel:
 				run += 1
 				if run == 62 or (i + 1) >= self.size:
@@ -312,61 +388,30 @@ class Encoder:
 				self.writer.write(Utils.TAG_RUN | (run - 1))
 				run = 0
 
-			index_pos = curr_pixel.hash
+			# Encoding values
+			index_pos = curr_pixel.wrap_hash
+			delta = curr_pixel.value - prev_pixel.value
+
+			# Near delta encoding
+			if -32 < delta < 33:
+				self.info['delta'] += 1
+				self.writer.write(Utils.TAG_DELTA | unsign(delta, 6))
+				self.hash_array[index_pos].update(curr_pixel.bytes)
+				continue
+
 			if self.hash_array[index_pos] == curr_pixel:
 				self.info['cache'] += 1
-				self.writer.write(Utils.TAG_INDEX | index_pos)
+				self.writer.write(Utils.TAG_CACHE | index_pos)
 				continue
 			self.hash_array[index_pos].update(curr_pixel.bytes)
 
-			# hashed = str(curr_pixel)
-			# index_pos = self.lru_cache.get_index(hashed)
-			# get = self.lru_cache.get(hashed)
-			# if get != -1:
-			# 	self.info['cache'] += 1
-			# 	self.writer.write(Utils.TAG_INDEX | index_pos)
-			# 	continue
-			# self.lru_cache.put(hashed, None)
-
-			delta = curr_pixel.value - prev_pixel.value
-
-			if -33 < delta < 32:
-				self.info['diff'] += 1
-				self.writer.write(Utils.TAG_DIFF | ((delta + 64) % 64))
-				continue
-
-			# vr = curr_pixel.red - prev_pixel.red
-			# vg = curr_pixel.green - prev_pixel.green
-			# vb = curr_pixel.blue - prev_pixel.blue
-
-			# vg_r = vr - vg
-			# vg_b = vb - vg
-
-			# if all(-3 < x < 2 for x in (vr, vg, vb)):
-			# 	self.info['diff'] += 1
-			# 	self.writer.write(Utils.TAG_DIFF | (vr + 2) << 4 | (vg + 2) << 2 | (vb + 2))
-			# 	continue
-
-			# elif -33 < vg < 32 and all(-9 < x < 8 for x in (vg_r, vg_b)):
-			# 	self.info['luma'] += 1
-			# 	self.writer.write(Utils.TAG_LUMA | (vg + 32))
-			# 	self.writer.write((vg_r + 8) << 4 | (vg_b + 8))
-			# 	continue
-
-			# TODO: Try encoding differences here % 256
-			# A, B = (((delta + 256) % 256) & 0xFFFFFFFF).to_bytes(2, sys.byteorder)
-
+			# Full delta encoding
 			self.info['full'] += 1
 			self.writer.write(Utils.TAG_FULL)
-			self.writer.write_2_bytes(delta)
-
-			# self.writer.write(A)
-			# self.writer.write(B)
-			# self.writer.write(curr_pixel.A)
-			# self.writer.write(curr_pixel.B)
+			self.writer.write_2_bytes(unsign(delta, 16))
 
 		if self.config['verbose']:
-			print(json.dumps(self.info))
+			print('\n' + json.dumps(self.info))
 
 		# Write EOF termination
 		for end in self.config['end_of_file']:
@@ -375,19 +420,19 @@ class Encoder:
 		output = self.writer.output()
 
 		ratio = len(self.image_bytes) / len(output)
-		self.stats.append(['Initial', ratio])
+		self.stats.append(['Initial', len(output) / 1000, ratio])
 
 		if self.config['zlib_compression']:
 
 			compressed = zlib.compress(output, level = 9)
 
 			zlib_ratio = len(output) / len(compressed)
-			self.stats.append(['Zlib', zlib_ratio])
+			self.stats.append(['DEFLATE', len(compressed) / 1000, zlib_ratio])
 
 			output = compressed
 
 		ratio = len(self.image_bytes) / len(output)
-		self.stats.append(['Final', ratio])
+		self.stats.append(['Final', len(output) / 1000, ratio])
 
 		if self.config['verbose']:
 			table = tabulate(self.stats, headers = 'firstrow', tablefmt = 'simple_outline')
@@ -419,55 +464,9 @@ class Decoder:
 		a, b, c, d = self.config['magic']
 		return ord(a) << 24 | ord(b) << 16 | ord(c) << 8 | ord(d)
 
-	def decode_packbits(self):
+	def decode_qoi(self):
 
 		header_magic = self.reader.read_4_bytes()
-
-		print(header_magic)
-
-		if header_magic != self.MAGIC:
-			raise ValueError('Image does not contain valid header')
-
-		self.width = self.reader.read_2_bytes()
-		self.height = self.reader.read_2_bytes()
-
-		print(self.width, self.height)
-
-		self.channels = self.reader.read()
-		self.bytes_per_channel = self.reader.read()
-
-		print(self.channels, self.bytes_per_channel)
-
-		self.shape = (self.width, self.height)
-		self.size = self.width * self.height
-		self.total_size = self.width * self.height * self.channels * self.bytes_per_channel
-
-		self.pixel_data = bytearray(self.total_size)
-
-		start = 10
-		end = -8 # -len(self.config['end_of_file'])
-
-		rest = self.reader.bytes[start + 1 : end]
-		self.packbits = PackBits()
-		decoded = self.packbits.decode(rest)
-
-		print(len(decoded))
-		return
-
-		# l = len(decoded) / self.bytes_per_channel
-		# a = decoded[:]
-		
-		if self.out_path is not None:
-			image = Image.frombuffer('RGB', self.shape, bytes(self.pixel_data), 'raw')
-			image.save(self.out_path, format = self.config['decode_format'])
-
-		return self.pixel_data
-	
-	
-	def decode(self):
-
-		header_magic = self.reader.read_4_bytes()
-
 		if header_magic != self.MAGIC:
 			raise ValueError('Image does not contain valid header')
 
@@ -476,6 +475,8 @@ class Decoder:
 
 		self.channels = self.reader.read()
 		self.bytes_per_channel = self.reader.read()
+
+		self.fractal_transform = bool(self.reader.read())
 
 		pixel_jump = self.channels * self.bytes_per_channel
 
@@ -487,11 +488,12 @@ class Decoder:
 
 		run = 0
 		pixel = Pixel()
+		prev_value = 0
 
 		n = -1
 		index = -1
 
-		if self.config['fractal']:
+		if self.fractal_transform:
 			self.curve = GeneralizedHilbertCurve(self.width, self.height, get_index = True)
 			pixel_order = self.curve.generator()
 		else:
@@ -501,11 +503,12 @@ class Decoder:
 
 			n += 1
 
-			index_pos = pixel.hash
+			index_pos = pixel.wrap_hash
 			self.hash_array[index_pos].update(pixel.bytes)
 
 			if index >= 0:
 				self.pixel_data[index : index + pixel_jump] = pixel.bytes
+				prev_value = pixel.value
 
 			index = pixel_jump * i
 
@@ -516,63 +519,81 @@ class Decoder:
 			data = self.reader.read()
 			if data is None:
 				break
-
-			"""
-			A, B = (((delta + 256) % 256) & 0xFFFFFFFF).to_bytes(2, sys.byteorder)
-
-			self.info['full'] += 1
-			self.writer.write(Utils.TAG_FULL)
-			self.writer.write(A)
-			self.writer.write(B)
-			"""
 		
 			if data == Utils.TAG_FULL:
-				# FIXME THESE ARE DELTAS
-
-				delta = self.reader.read_2_bytes()
-				
-				# recovered = (prev_pixel.value + (delta - 256)) % 256
-				
-				pixel.update(new_value)
+				delta = signed(self.reader.read_2_bytes(), 16)
+				recovered = (prev_value + delta)
+				pixel.update(recovered.to_bytes(2, sys.byteorder))
 				continue
 
-			if (data & Utils.TAG_MASK) == Utils.TAG_INDEX:
+			if (data & Utils.TAG_MASK) == Utils.TAG_DELTA:
+				delta = signed(~Utils.TAG_MASK & data, 6)
+				recovered = (prev_value + delta)
+				pixel.update(recovered.to_bytes(2, sys.byteorder))
+				continue
+			
+			if (data & Utils.TAG_MASK) == Utils.TAG_CACHE:
 				pixel.update(self.hash_array[data].bytes)
 				continue
-
-			"""
-			delta = curr_pixel.value - prev_pixel.value
-
-			if -33 < delta < 32:
-				self.info['diff'] += 1
-				self.writer.write(Utils.TAG_DIFF | ((delta + 64) % 64))
-				continue
-
-			"""
-
-			if (data & Utils.TAG_MASK) == Utils.TAG_DIFF:
-				# red = (pixel.red + ((data >> 4) & 0x03) - 2) % 256
-				# green = (pixel.green + ((data >> 2) & 0x03) - 2) % 256
-				# blue = (pixel.blue + (data & 0x03) - 2) % 256
-				pixel.update(bytes((A, B)))
-				continue
-
-			# if (data & Utils.TAG_MASK) == Utils.TAG_LUMA:
-			# 	b2 = self.reader.read()
-			# 	vg = ((data & 0x3f) % 256) - 32
-			# 	red = (pixel.red + vg - 8 + ((b2 >> 4) & 0x0f)) % 256
-			# 	green = (pixel.green + vg) % 256
-			# 	blue = (pixel.blue + vg - 8 + (b2 & 0x0f)) % 256
-			# 	pixel.update(bytes((red, green, blue)))
-			# 	continue
 
 			if (data & Utils.TAG_MASK) == Utils.TAG_RUN:
 				run = (data & 0x3f)
 
-		print(f'len raw: {len(self.pixel_data)} bytes')
-
 		if self.out_path is not None:
-			image = Image.frombuffer('RGB', self.shape, bytes(self.pixel_data), 'raw')
-			image.save(self.out_path, format = self.config['decode_format'])
+
+			arr = np.frombuffer(bytes(self.pixel_data), dtype = 'uint16').reshape(self.width, self.height)
+
+			# image = Image.fromarray(arr)
+
+			# p_image = Image.fromarray(arr)
+			# p_image.save(self.out_path, format = self.config['decode_format'])
+
+			data = plt.imshow(arr, cmap = 'gray', aspect = 'auto')
+			plt.savefig(self.out_path)
+
+			# image = Image.frombuffer('I;16', self.shape, bytes(inter), 'raw', 'I;16', 2 * self.width, 1)
+			# image.save(self.out_path, format = self.config['decode_format'])
+
+			return arr
+
 
 		return self.pixel_data
+	
+	
+	def decode_packbits(self):
+
+		header_magic = self.reader.read_4_bytes()
+
+		if header_magic != self.MAGIC:
+			raise ValueError('Image does not contain valid header')
+
+		self.width = self.reader.read_2_bytes()
+		self.height = self.reader.read_2_bytes()
+
+		self.channels = self.reader.read()
+		self.bytes_per_channel = self.reader.read()
+
+		self.fractal_transform = bool(self.reader.read())
+
+		self.shape = (self.width, self.height)
+		self.size = self.width * self.height
+		self.total_size = self.width * self.height * self.channels * self.bytes_per_channel
+
+		self.pixel_data = bytearray(self.total_size)
+
+		rest = self.reader.bytes[self.reader.read_pos : -len(self.config['end_of_file'])]
+		self.packbits = PackBits(self.config['delta_transform'])
+		decoded = self.packbits.decode(rest)
+
+		# Interleaving previously split bytes
+		half = int(len(decoded) / self.bytes_per_channel)
+		inter = [val for pair in zip(decoded[:half], decoded[half:]) for val in pair]
+		
+		if self.out_path is not None:
+
+			arr = np.frombuffer(bytes(inter), dtype = 'uint16').reshape(self.width, self.height)
+
+			data = plt.imshow(arr, cmap = 'gray', aspect = 'auto')
+			plt.savefig(self.out_path)
+		
+			return arr
