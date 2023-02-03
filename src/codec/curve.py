@@ -40,6 +40,13 @@ class GeneralizedHilbertCurve:
 
 		self.get_index = get_index
 		self.curve = []
+		self.zipper = []
+
+	def generate_all(self):
+		if not self.curve:
+			for a in self.generator():
+				pass
+		return self.curve
 
 	def generator(self):
 
@@ -68,7 +75,7 @@ class GeneralizedHilbertCurve:
 	
 	def pos(self, p):
 		""" Get (r, c) given raster scan index position """
-		return (p // self.width, p % self.width)		
+		return (p // self.width, p % self.width)	
 
 	def sgn(self, x):
 		return -1 if x < 0 else (1 if x > 0 else 0)
@@ -130,6 +137,37 @@ class GeneralizedHilbertCurve:
 			yield from self.generate(x+bx2, y+by2, ax, ay, bx-bx2, by-by2)
 			yield from self.generate(x+(ax-dax)+(bx2-dbx), y+(ay-day)+(by2-dby), -bx2, -by2, -(ax-ax2), -(ay-ay2))
 
+	def zipper_transform(self, original = None):
+
+		if original == None:
+			original = self.curve.generate_all()
+
+		self.zipper = []
+
+		completed = [False] * len(original)
+
+		i = 0
+		while i < len(original):
+
+			if completed[i]:
+				i += 1
+				continue
+
+			index = original[i]
+			pos = self.pos(index)
+			opp_index = self.idx((pos[0], self.width - pos[1] - 1))
+			
+			self.zipper.append(index)
+			self.zipper.append(opp_index)
+
+			completed[index] = True
+			completed[opp_index] = True
+
+			i += 1
+		
+		return self.zipper
+
+
 
 if __name__ == '__main__':
 
@@ -153,14 +191,31 @@ if __name__ == '__main__':
 
 	print(f'Generator Elapsed: {elapsed} sec')
 
-	print('curve', curve.curve)
+	# print('curve', curve.curve)
+
+	# zipper = []
+
+	# for i in range(len(curve.curve) // 2):
+	# 	index = curve.curve[i]
+	# 	coor = curve.pos(index)
+	# 	opp = (coor[0], args.width - coor[1] - 1)
+	# 	opp_index = curve.idx(opp)
+	# 	zipper.append(index)
+	# 	zipper.append(opp_index)
+
+	# print(zipper)
+
+	zipper = range(N)
+	zipper = curve.zipper_transform(zipper)
 
 	import numpy as np
-	a = np.zeros(N) # .reshape(args.height, args.width)
+	a = np.zeros(N, dtype = int) # .reshape(args.height, args.width)
 
-	for i in range(len(curve.curve)):
-		# a[curve.curve[i]] = i
-		a[curve.curve[i]] = i
+	for i in range(len(zipper)):
+		a[zipper[i]] = i
+
+	# for i in range(len(curve.curve)):
+	# 	a[curve.curve[i]] = i
 
 	a = a.reshape(args.height, args.width)
 

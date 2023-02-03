@@ -29,6 +29,16 @@ def revert_delta_transform(data):
 
 if __name__ == '__main__':
 
+	import imageio
+	import numpy as np
+
+	# Construct 16-bit gradient greyscale image
+	im = np.arange(65536, dtype = np.uint16).reshape(256, 256)
+	# im = np.arange(256, dtype = np.uint8).reshape(16, 16)
+	imageio.imwrite('data/result.png', im) 
+
+	exit()
+
 	import glob
 
 	dataset_directory = 'C:/Users/taaha/Downloads/manifest-OtXaMwL56190865641215613043/QIN LUNG CT/'

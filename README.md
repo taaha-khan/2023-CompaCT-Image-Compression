@@ -18,7 +18,7 @@
 
 **High Color Depth CT Scan Compression Applying Heuristic Hierarchical Clustering and Fractal Topological Pixel Reordering**
 
-**Heuristic Hierarchical Clustering and Fractal Topological Pixel Reordering for High Color Depth CT Scan Compression**
+**Heuristic Fractal Pixel Segmentation for High Color Depth CT Scan Compression**
 
 ## Completed
 - Port QOI and Gilbert for python
@@ -26,9 +26,14 @@
 - Apply ZLib DEFLATE compression to output
 - Get SRGB and HDR testing datasets
 
-## TODO
+## Ideas
 - CACHE: All previous values, index to most recent or most common 64 pixel colors for cache that AREN'T within delta limit
-- **TILE COMPRESSION: Group pixels into (hilbert cluster?) sections and encode RLE in as single cluster**
+- TILE COMPRESSION: Group pixels into (hilbert cluster?) sections and encode RLE in as single cluster
+- ZIPPER: Read image left edge, right edge, etc. in zipper format for vertical symmetry
+	- PROBLEM: Not perfect vertical symmetry, very bad offset error
+- FRACTAL: Take segments of image, cluster for similar segments, mesh together
+
+## TODO
 - Hirerichal Clustering: Create section skipping algorithm (binary search?)
 - Compare compression ratio, BPP with competitors
 - Write up slideshow and abstract

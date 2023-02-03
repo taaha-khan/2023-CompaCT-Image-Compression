@@ -1,14 +1,17 @@
 
+from itertools import chain
 import numpy as np
 
 class Partitioner:
+
+	inf = float('inf')
 	
-	def __init__(self, data, min_block_size = float('-inf')):
+	def __init__(self, data, block_size = 8):
+
+		self.block_size = block_size
 
 		self.data = data
 		self.size = len(data)
-
-		self.min_block_size = min_block_size
 
 	def set_prefix_sum(self, data):
 		""" O(N) Get prefix sum array of immediate changes """
@@ -26,115 +29,157 @@ class Partitioner:
 		""" O(1) Get changes given subsection inclusive """
 		return self.prefix_sum[r] - self.prefix_sum[l]
 
-	def get_mean_half_diff(self, p):
 
-		if p >= self.size - 1:
-			return float('inf')
+	def cluster_percentage(self):
 
-		if p < self.min_block_size or self.size - p - 2 < self.min_block_size:
-			return float('inf')
+		self.diffs = [0.0]
 
-		l = self.get_diff(0, p)
-		r = self.get_diff(p + 1, self.size - 1)
+		size = len(self.clusters)
 
-		return (l + r) / 2
+		for i in range(1, size):
 
-	def join_adj(self):
+			diff = abs(self.data[i][0] - self.data[i - 1][-1])
+			self.diffs.append(diff)
 
-		min_delta = float('inf')
-		min_pair = None
+		print(f'diffs: {[round(a, 2) for a in self.diffs]}')
 
-		for i in range(len(self.data) - 1):
+		for i in range(size):
+			self.diffs[i] = self.diffs[i] / (self.data[i] + 1)
+			# self.diffs[i] = self.data[i] / self.diffs[i]
 
-			a = self.data[i]
-			b = self.data[i + 1]
+		print(f'percentage diffs: {[round(a, 2) for a in self.diffs]}')
 
-			joined = a + b
-
-			delta = (max(joined) - min(joined)) # / len(joined)
-
-			# print(f'{i} - {i + 1} : {delta}')
-
-			if delta < min_delta:
-				min_delta = delta
-				min_pair = (i, i + 1)
-
-		self.data[min_pair[0]] = self.data[min_pair[0]] + self.data[min_pair[1]]
-		self.data.pop(min_pair[1])
-
-		print(self.data, min_pair)
-
-
-	def join_all(self):
-
-		min_delta = float('inf')
-		min_pair = None
-
-		joins = []
-
-		n = 0
-
-		for i in range(len(self.data) - 1):
-
-			for j in range(i + 1, len(self.data)):
-
-				n += 1
-
-				a = self.data[i]
-				b = self.data[j]
-
-				joined = a + b
-
-				# delta = (max(joined) - min(joined)) # / len(joined)
-				delta = abs(joined[0] - joined[-1]) # * (j - i)
-
-				# print(f'{i} - {i + 1} : {delta}')
-
-				if delta < min_delta:
-					min_delta = delta
-					min_pair = (i, j)
-
-		self.data[min_pair[0]] = self.data[min_pair[0]] + self.data[min_pair[1]]
-		self.data.pop(min_pair[1])
-
-		self.indexes[min_pair[0]] = self.indexes[min_pair[0]] + self.indexes[min_pair[1]]
-		self.indexes.pop(min_pair[1])
-
-		joins.append(min_pair)
-
-		print(self.data, min_pair)
-		# print(joins)
-
-		return
+		for i in range(size):
+			if self.diffs[i] > 0.4:
+				print()
+			
+			print(f'{self.data[i]}, ', end = '')
+			
+		return self.diffs
 	
 	def near(self, delta):
 		return -32 < delta < 33
 
 	def iterative_joining(self):
 
-		first = 0
+		stds = [self.inf] * len(self.indexes)
+
+		index = self.indexes[0]
+		groups = [[]]
 
 		# Continue until best chaining is found
-		while True:
+		while len(self.indexes) > 0:
 
-			section = data[first]
+			section = self.clusters[index]
+			self.indexes.remove(index)
+			groups[-1].append(index)
+
+			# print(f'{index}: {section} | rem: {self.indexes}')
+
+			found = False
 
 			# Look at all next thingies
-			for i in range(first + 1, len(data)):
-				next_section = data[i]
+			for i in self.indexes:
 
-				if self.near(section[-1] - next_section[0]):
-					print(f'JUMP TO INDEX {i}')
-					first = i
+				diff = i - index
+
+				if diff < -64:
+					continue
+
+				if diff > 64:
+					metric = False
+					break
+
+				next_section = self.clusters[i]
+
+				metric = self.near(section[-1] - next_section[0])
+
+				# if not metric and False:
+
+				# 	A = stds[index]
+				# 	if A == self.inf:
+				# 		A = stds[index] = np.std(section)
+				# 	B = stds[i]
+				# 	if B == self.inf:
+				# 		B = stds[i] = np.std(next_section)
+
+				# 	T = np.std(section[self.block_size // 2:] + next_section[:self.block_size // 2])
+				# 	metric = (A + B) > (T)
+
+				# 	# if metric:
+				# 	# 	print(f'{section} -> {next_section} : {round(A + B)} {round(T)} {metric}')
+
+				if metric:
+					# if i - index > 1:
+					# 	print(f'JUMP {i - index} BLOCKS')
+					index = i
 					break
 		
-			if i == len(data) - 1:
+			if not metric:
+				# print(f'POP (doesnt matter relative order)')
+				if len(self.indexes) > 0:
+					groups.append([])
+					index = self.indexes[0]
+
+		groups.sort(key = lambda a: a[-1])
+		# print([f'{group[0]} - {group[-1]}' for group in groups])
+
+		self.order = list(chain.from_iterable(groups))
+
+		# print(self.order)
+
+		# out = [self.clusters[i] for i in order]
+
+		out = []
+		for i in self.order:
+			out += self.clusters[i]
+
+		# print(out[:1000])
+
+		return out
+	
+	def get_group_jumps(self):
+
+		buffer = self.indexes_copy
+		indexes = self.order
+
+		prev_idx = -1
+		idx = 0
+
+		jumps = {}
+
+		i = 0
+		while len(indexes) > 0:
+
+			prev_idx = idx
+			idx = indexes.pop(i)
+
+			diff = idx - prev_idx
+
+			if diff != 1 and -33 < diff < 32:
+				jumps[prev_idx] = diff
+				# print(f'at {prev_idx:2} jump {diff:3} ')
+			else:
+				# print(f'run {idx}')
 				pass
+
+			# i += 1
+
+		# print(jumps)
+
+		return jumps
 
 	def initial_cluster(self):
 
-		self.clusters = self.data.copy()
+		# self.clusters = [[i] for i in self.data]
+		self.clusters = [self.data[i : i + self.block_size] for i in range(0, len(self.data), self.block_size)]
 
+		self.indexes = list(range(len(self.clusters)))
+		self.indexes_copy = self.indexes.copy()
+
+		return self.clusters
+
+		"""
 		for i in range(len(self.clusters) - 1, 0, -1):
 
 			prev = self.clusters[i - 1]
@@ -146,11 +191,13 @@ class Partitioner:
 				self.clusters[i] = self.clusters[i - 1] + self.clusters[i]
 				self.clusters.pop(i - 1)
 
-		self.indexes = [[i] for i in range(len(self.clusters))]
+		# self.indexes = [i for i in range(len(self.clusters))]
+		self.indexes = list(range(len(self.clusters)))
+		self.indexes_copy = self.indexes.copy()
 
 		print(self.clusters)
 		print(self.indexes)
-
+		"""
 
 if __name__ == '__main__':
 
@@ -158,9 +205,22 @@ if __name__ == '__main__':
 	random.seed(0)
 
 	# data = [0, 0, 1, 1, 0, 1, 0, 0]
-	data = [10, 0, 0, 32, 255, 255, 254, 230, 10, 11, 0, 2, 234, 219, 50, 100, 101] # * 100
-
+	data = [10, 0, 0, 31, 255, 255, 254, 230, 10, 11, 0, 2, 234, 219, 100, 50] * 2
+	# data = [1.91, 2.87, 3.61, 10.91, 11.91, 12.82, 100.73, 100.71, 101.89, 200]
+	
 	print(data)
+
+	p = Partitioner(data, block_size = 4)
+	p.initial_cluster()
+	groups = p.iterative_joining()
+
+	print(groups)
+	p.get_group_jumps(groups)
+	# a = p.cluster_percentage()
+
+	# print(splits)
+
+	exit()
 
 	# data = [random.randint(0, 255) for i in range(20)]
 

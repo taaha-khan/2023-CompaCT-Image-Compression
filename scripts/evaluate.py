@@ -53,7 +53,6 @@ def new_compressor(path, config):
 	encoder = Encoder(config, image, None)
 	compressed = encoder.encode_qoi()
 	# compressed = encoder.encode_packbits()
-	# compressed = encoder.encode_deflate()
 	compressed_size = len(compressed) # bytes
 
 	output[TIME] = time.process_time() - start
@@ -69,8 +68,8 @@ def main():
 	config['verbose'] = False
 
 	# dataset_directory = 'C:/Users/taaha/Downloads/ct_nonequi_tilt/'
-	# dataset_directory = 'C:/Users/taaha/Downloads/manifest-OtXaMwL56190865641215613043/QIN LUNG CT/R0223/12-05-2001-NA-CT CHEST WITH CONTRAST-15336/2.000000-NA-08982/'
-	dataset_directory = 'C:/Users/taaha/Downloads/manifest-OtXaMwL56190865641215613043/QIN LUNG CT/'
+	dataset_directory = 'C:/Users/taaha/Downloads/manifest-OtXaMwL56190865641215613043/QIN LUNG CT/R0223/12-05-2001-NA-CT CHEST WITH CONTRAST-15336/2.000000-NA-08982/'
+	# dataset_directory = 'C:/Users/taaha/Downloads/manifest-OtXaMwL56190865641215613043/QIN LUNG CT/'
 
 	processes = []
 	outputs = []
@@ -78,21 +77,19 @@ def main():
 	with processor.ProcessPoolExecutor() as executor:
 
 		for n, filename in enumerate(glob.glob(dataset_directory + '**/*.dcm', recursive = True)):
-			if os.path.basename(filename).startswith('1-1'):
-				continue
+			# if os.path.basename(filename).startswith('1-1'):
+			# 	continue
 			processes.append(executor.submit(new_compressor, filename, config))
 			
 			if n > 200:
 				break
 
-		print(f'Queued to compress {len(processes)} testing images on {os.cpu_count()} threads')
+		print(f'{len(processes)} testing images queued to compress on {os.cpu_count()} threads')
 
 		with tqdm(total = len(processes)) as bar:
 			for process in processor.as_completed(processes):
 				outputs.append(process.result())
 				bar.update(1)
-
-	print('\n')
 
 	table = tabulate(outputs, headers = 'keys', tablefmt = 'simple_outline') # .replace('-', '━')
 	# print(table)
