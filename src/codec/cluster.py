@@ -58,7 +58,7 @@ class Partitioner:
 		return self.diffs
 	
 	def near(self, delta):
-		return -32 < delta < 33
+		return -64 < delta < 65
 
 	def iterative_joining(self):
 
@@ -71,22 +71,27 @@ class Partitioner:
 		while len(self.indexes) > 0:
 
 			section = self.clusters[index]
+			place = self.indexes.index(index)
 			self.indexes.remove(index)
 			groups[-1].append(index)
 
 			# print(f'{index}: {section} | rem: {self.indexes}')
 
-			found = False
+			metric = False
 
 			# Look at all next thingies
-			for i in self.indexes:
+			# for i in self.indexes:
+			for i in range(len(self.indexes)):
 
-				diff = i - index
+				next_index = self.indexes[i]
+				diff = next_index - index
 
 				if diff < -64:
+				# if diff < 0:
 					continue
 
-				if diff > 64:
+				if diff > 65:
+				# if diff > 128:
 					metric = False
 					break
 
@@ -112,14 +117,15 @@ class Partitioner:
 				if metric:
 					# if i - index > 1:
 					# 	print(f'JUMP {i - index} BLOCKS')
-					index = i
+					index = next_index
 					break
 		
 			if not metric:
 				# print(f'POP (doesnt matter relative order)')
 				if len(self.indexes) > 0:
 					groups.append([])
-					index = self.indexes[0]
+					print(f'place: {next_index} : len: {len(self.indexes)}')
+					index = self.indexes[next_index]
 
 		groups.sort(key = lambda a: a[-1])
 		# print([f'{group[0]} - {group[-1]}' for group in groups])

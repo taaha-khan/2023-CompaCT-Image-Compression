@@ -8,16 +8,15 @@
 	"channels": 1,
 	"bytes_per_channel": 2,
 
-	"dynamic_full_tag": false,
+	"end_of_file": 59,
 
 	"delta_transform": true,
-	"fractal_transform": false,
 	"zipper_transform": false,
+
+	"fractal_transform": false,
 	"segmentation_transform": false,
 
-	"zlib_compression": true,
-
-	"end_of_file": 58,
+	"deflate_compression": true,
 
 	"verbose": true
 

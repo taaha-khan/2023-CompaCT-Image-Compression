@@ -25,6 +25,7 @@
 - Plugin Gilbert to QOI ordering
 - Apply ZLib DEFLATE compression to output
 - Get SRGB and HDR testing datasets
+- Hirerichal Clustering: Create section skipping algorithm (binary search?)
 
 ## Ideas
 - CACHE: All previous values, index to most recent or most common 64 pixel colors for cache that AREN'T within delta limit
@@ -34,7 +35,7 @@
 - FRACTAL: Take segments of image, cluster for similar segments, mesh together
 
 ## TODO
-- Hirerichal Clustering: Create section skipping algorithm (binary search?)
+- Finish Cluster plugin
 - Compare compression ratio, BPP with competitors
 - Write up slideshow and abstract
 
@@ -133,3 +134,7 @@
 
 ### Project Structure Notation
 - [Simple Documentation](https://github.com/mitcommlab/Coding-Documentation/blob/master/File-Structure-Case-Studies.md#case-study-2-a-simple-hierarchy)
+
+## Licensing (Closed Source Project)
+- https://creativecommons.org/licenses/by-nc-nd/3.0/
+- https://creativecommons.org/licenses/by-nc-nd/3.0/legalcode

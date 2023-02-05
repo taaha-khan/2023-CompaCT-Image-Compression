@@ -17,6 +17,7 @@ from tqdm import tqdm
 import pydicom
 from PIL import Image
 
+from png import array_to_png
 from codec.core import Encoder, Decoder
 
 FILE = 'File'
@@ -45,11 +46,18 @@ def new_compressor(path, config):
 
 	start = time.process_time()
 
-	# ds.compress(pydicom.uid.RLELossless, image, encoding_plugin = 'pylibjpeg')
+	# # PNG ENCODER
+	# tmp_saved = f'C:/Users/taaha/Downloads/rle_ct_dataset/{os.path.basename(path)[:-4]}.png'
+	# array_to_png(image, tmp_saved)
+	# compressed_size = os.path.getsize(tmp_saved)
+
+	# # BUILTIN RLE LOSSLESS ENCODER
 	# tmp_saved = f'C:/Users/taaha/Downloads/rle_ct_dataset/{os.path.basename(path)}'
+	# ds.compress(pydicom.uid.RLELossless, image, encoding_plugin = 'pylibjpeg')
 	# ds.save_as(tmp_saved)
 	# compressed_size = os.path.getsize(tmp_saved) # bytes
 
+	# PROPOSED ENCODER
 	encoder = Encoder(config, image, None)
 	compressed = encoder.encode_qoi()
 	# compressed = encoder.encode_packbits()
@@ -79,12 +87,13 @@ def main():
 		for n, filename in enumerate(glob.glob(dataset_directory + '**/*.dcm', recursive = True)):
 			# if os.path.basename(filename).startswith('1-1'):
 			# 	continue
+
 			processes.append(executor.submit(new_compressor, filename, config))
 			
-			if n > 200:
-				break
+			# if n > 200:
+			# 	break
 
-		print(f'{len(processes)} testing images queued to compress on {os.cpu_count()} threads')
+		print(f'{len(processes)} testing images queued on {os.cpu_count()} threads')
 
 		with tqdm(total = len(processes)) as bar:
 			for process in processor.as_completed(processes):
@@ -92,7 +101,7 @@ def main():
 				bar.update(1)
 
 	table = tabulate(outputs, headers = 'keys', tablefmt = 'simple_outline') # .replace('-', '━')
-	# print(table)
+	print(table)
 
 	ratios = 0.0
 	times = 0.0
@@ -111,8 +120,6 @@ def main():
 
 	table = tabulate(info, headers = 'firstrow', tablefmt = 'simple_outline')
 	print(table)
-
-
 
 if __name__ == '__main__':
 	main()

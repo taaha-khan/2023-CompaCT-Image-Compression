@@ -44,14 +44,14 @@ class Utils:
 	TAG_MASK = 0xc0       # 11000000
 	DATA_MASK = ~TAG_MASK # 00111111
 
-	TAG_RUN = 0xc0       # 11xxxxxx
-	TAG_CACHE = 0x80     # 10xxxxxx
-	
-	# 01xxxxxx (0x40) NOT ALLOWED
-
 	TAG_DELTA = 0x00     # 0xxxxxxx
 	DELTA_MASK = 0x80    # 1xxxxxxx
 
+	# 01xxxxxx (0x40) NOT ALLOWED
+
+	TAG_12_FULL = 0x80     # 10xxxxxx
+	TAG_RUN = 0xc0       # 11xxxxxx
+	
 	# TAG_FULL_OLD = 0xfe  # 11111110
 	TAG_FULL = 0xff      # 11111111
 
@@ -126,7 +126,7 @@ class ByteWriter:
 
 	def write(self, byte: int):
 		self.bytes.append(byte % 256)
-	
+
 	def write_4_bytes(self, value):
 		self.write((0xff000000 & value) >> 24)
 		self.write((0x00ff0000 & value) >> 16)
@@ -144,7 +144,7 @@ class ByteWriter:
 class ByteReader:
 
 	# FIXME: Adapts based on configured EOF
-	padding_len = 2
+	padding_len = 1
 
 	def __init__(self, data: bytes):
 		self.bytes = data
@@ -240,15 +240,15 @@ class Encoder:
 			self.writer.write(data)
 
 		# Write EOF termination
-		for end in self.config['end_of_file']:
-			self.writer.write(end)
+		if self.config['end_of_file'] is not None:
+			self.writer.write(self.config['end_of_file'])
 
 		output = self.writer.output()
 
 		ratio = self.raw_size / len(output)
 		self.stats.append(['PackBits', len(output) / 1000, ratio])
 
-		if self.config['zlib_compression']:
+		if self.config['deflate_compression']:
 
 			compressed = zlib.compress(output, level = 9)
 		
@@ -327,18 +327,18 @@ class Encoder:
 			groups = self.partition.iterative_joining()
 			self.cluster_jumps = self.partition.get_group_jumps()
 			# print(self.cluster_jumps)
-			# print(len(self.cluster_jumps))
+			if self.config['verbose']:
+				print(len(self.cluster_jumps))
 
-		last_full_n = 0
-		last_full_head = 0
+			pixel_order = groups
 
 		for i in pixel_order:
 
-			index = pixel_jump * i
-			px = self.image_bytes[index : index + pixel_jump]
-
-		# for value in groups:
-		# 	px = value.to_bytes(2, sys.byteorder)
+			if self.config['segmentation_transform']:
+				px = i.to_bytes(2, sys.byteorder)
+			else:
+				index = pixel_jump * i
+				px = self.image_bytes[index : index + pixel_jump]
 
 			n += 1
 
@@ -359,27 +359,21 @@ class Encoder:
 				run = 0
 
 			# Encoding values
-			index_pos = curr_pixel.wrap_hash
+			# index_pos = curr_pixel.wrap_hash
 			delta = curr_pixel.value - prev_pixel.value
 
 			# Near delta encoding
 			if -64 < delta < 65:
 				self.info['delta'] += 1
 				self.writer.write(Utils.TAG_DELTA | unsign(delta, 7))
-				self.hash_array[index_pos].update(curr_pixel.bytes)
+				# self.hash_array[index_pos].update(curr_pixel.bytes)
 				continue
 
-			# if -32 < delta < 33:
-			# 	self.info['delta'] += 1
-			# 	self.writer.write(Utils.TAG_DELTA | unsign(delta, 6))
-			# 	self.hash_array[index_pos].update(curr_pixel.bytes)
+			# if self.hash_array[index_pos] == curr_pixel:
+			# 	self.info['cache'] += 1
+			# 	self.writer.write(Utils.TAG_CACHE | index_pos)
 			# 	continue
-
-			if self.hash_array[index_pos] == curr_pixel:
-				self.info['cache'] += 1
-				self.writer.write(Utils.TAG_CACHE | index_pos)
-				continue
-			self.hash_array[index_pos].update(curr_pixel.bytes)
+			# self.hash_array[index_pos].update(curr_pixel.bytes)
 
 			### QUERY CLUSTER JUMPING
 
@@ -396,43 +390,10 @@ class Encoder:
 			
 			"""
 
-			# Full pixel encoding
+			# Full pixel delta encoding
 			self.info['full'] += 1
-
-			if not self.config['dynamic_full_tag']:
-				self.writer.write(Utils.TAG_FULL)
-
-			# NOTE: Increases initial by 5% but decreases DEFLATE by ~5% (net loss)
-			# # RLE for raw pixels (similar to PackBits)
-			# elif last_full_n == n - 1:
-			# 	# print(f'LFN == N - 1: {last_full_n} == {n - 1}')
-			# 	# print(f'len(bytes) = {len(self.writer.bytes)}')
-			# 	# print(f'last full head = {last_full_head}')
-				
-			# 	value = self.writer.get_byte(last_full_head) & Utils.DATA_MASK
-			# 	# print(f'value {value}')
-				
-			# 	if value + 1 < 64:
-			# 		value += 1
-			# 		self.writer.set_byte(last_full_head, value)
-			# 		# print(f'VALUE INC to {value}')
-
-			# 	else:
-			# 		value = 1
-			# 		self.writer.write(Utils.TAG_FULL_HEAD | (1))
-			# 		last_full_head = len(self.writer.bytes) - 1
-			# 		# print(f'VALUE RESET {last_full_head}')
-
-			# else:
-			# 	# self.writer.write(Utils.TAG_FULL)
-			# 	self.writer.write(Utils.TAG_FULL_HEAD | (1))
-			# 	last_full_head = len(self.writer.bytes) - 1
-			# 	# print(f'ROOT FULL {last_full_head}')
-
-			# last_full_n = n
-
-			# Delta encoding
-			self.writer.write_2_bytes(unsign(delta, 16))
+			# self.writer.write(Utils.TAG_FULL)
+			self.writer.write_2_bytes((Utils.TAG_12_FULL << 8) | unsign(delta, 12))
 
 		if self.config['verbose']:
 			print('\n' + json.dumps(self.info))
@@ -446,7 +407,7 @@ class Encoder:
 		ratio = len(self.image_bytes) / len(output)
 		self.stats.append(['Initial', len(output) / 1000, ratio])
 
-		if self.config['zlib_compression']:
+		if self.config['deflate_compression']:
 
 			compressed = zlib.compress(output, level = 9)
 
@@ -475,7 +436,7 @@ class Decoder:
 		self.config = config
 
 		self.file_bytes = file_bytes
-		if self.config['zlib_compression']:
+		if self.config['deflate_compression']:
 			self.file_bytes = zlib.decompress(self.file_bytes)
 
 		self.reader = ByteReader(self.file_bytes)
@@ -547,11 +508,24 @@ class Decoder:
 			if data is None:
 				break
 		
-			if data == Utils.TAG_FULL:
-				delta = signed(self.reader.read_2_bytes(), 16)
+			# if data == Utils.TAG_FULL:
+			# 	delta = signed(self.reader.read_2_bytes(), 16)
+			# 	recovered = (prev_value + delta)
+			# 	pixel.update(recovered.to_bytes(2, sys.byteorder))
+			# 	self.fulls.append(i)
+			# 	continue
+
+			if (data & Utils.TAG_MASK) == Utils.TAG_12_FULL:
+				
+				rest = self.reader.read()
+				full_data = data << 8 | rest
+
+				delta = signed(full_data & 0xFFF, 12)
+
 				recovered = (prev_value + delta)
 				pixel.update(recovered.to_bytes(2, sys.byteorder))
 				self.fulls.append(i)
+
 				continue
 
 			if (data & Utils.DELTA_MASK) == Utils.TAG_DELTA:
@@ -561,10 +535,10 @@ class Decoder:
 				# self.fulls.append(i)
 				continue
 
-			if (data & Utils.TAG_MASK) == Utils.TAG_CACHE:
-				pixel.update(self.hash_array[Utils.DATA_MASK & data].bytes)
-				# self.fulls.append(i)
-				continue
+			# if (data & Utils.TAG_MASK) == Utils.TAG_CACHE:
+			# 	pixel.update(self.hash_array[Utils.DATA_MASK & data].bytes)
+			# 	# self.fulls.append(i)
+			# 	continue
 
 			if (data & Utils.TAG_MASK) == Utils.TAG_RUN:
 				run = (data & 0x3f)
@@ -575,30 +549,19 @@ class Decoder:
 			pixels = np.frombuffer(bytes(self.pixel_data), dtype = 'uint16').reshape(self.width, self.height)
 
 			# pixels = np.zeros(self.size, dtype = np.uint16)
-			# pixels[self.fulls] = 65535
+			# pixels[self.fulls] = 4095
 			# pixels = pixels.reshape(self.width, self.height)
 
 			preview = pixels.copy()
 
-			# preview[:, ::8] = 65535
-			# preview[::8, :] = 65535
+			# preview[:, ::8] = 4095
+			# preview[::8, :] = 4095
 
-			preview *= np.uint16(65535 / pixels.max())
+			# Scale from 12 bit image to 16 bit display
+			preview *= np.uint16(65536 / 4096)
 
 			import imageio
 			imageio.imwrite(self.out_path, preview)
-
-			# image = Image.fromarray(pixels, mode = 'I;16')
-			# image.save(self.out_path)
-
-			# print(self.fulls)
-
-			# plt.axis('off')
-			# plt.imshow(data, cmap = 'gray')
-			# plt.savefig(self.out_path, bbox_inches = 'tight')
-
-			# image = Image.frombuffer('I;16', self.shape, bytes(inter), 'raw', 'I;16', 2 * self.width, 1)
-			# image.save(self.out_path, format = self.config['decode_format'])
 
 			return pixels
 
@@ -626,7 +589,7 @@ class Decoder:
 
 		self.pixel_data = bytearray(self.total_size)
 
-		rest = self.reader.bytes[self.reader.read_pos : -len(self.config['end_of_file'])]
+		rest = self.reader.bytes[self.reader.read_pos : -1]
 		self.packbits = PackBits(self.config['delta_transform'])
 		decoded = self.packbits.decode(rest)
 

@@ -29,6 +29,29 @@ def revert_delta_transform(data):
 
 if __name__ == '__main__':
 
+	value = 3200
+
+	header = 0x80
+
+	print('header', bin(header)[2:])
+	print('value', bin(value)[2:])
+
+	a = (header << 8) | value
+
+	b = bin(a)[2:]
+	print('together', b)
+	print('len', len(b))
+
+	# mask = 0b111111111111
+	mask = 0xFFF
+
+	c = (a << 12) >> 12
+	c = a & mask
+	print(bin(c)[2:])
+	print('cut', c)
+
+	exit()
+
 	import imageio
 	import numpy as np
 
