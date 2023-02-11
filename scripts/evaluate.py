@@ -47,9 +47,9 @@ def new_compressor(path, config):
 	start = time.process_time()
 
 	# # PNG ENCODER
-	# tmp_saved = f'C:/Users/taaha/Downloads/rle_ct_dataset/{os.path.basename(path)[:-4]}.png'
-	# array_to_png(image, tmp_saved)
-	# compressed_size = os.path.getsize(tmp_saved)
+	tmp_saved = f'C:/Users/taaha/Downloads/rle_ct_dataset/{os.path.basename(path)[:-4]}.png'
+	array_to_png(image, tmp_saved)
+	compressed_size = os.path.getsize(tmp_saved)
 
 	# # BUILTIN RLE LOSSLESS ENCODER
 	# tmp_saved = f'C:/Users/taaha/Downloads/rle_ct_dataset/{os.path.basename(path)}'
@@ -57,11 +57,11 @@ def new_compressor(path, config):
 	# ds.save_as(tmp_saved)
 	# compressed_size = os.path.getsize(tmp_saved) # bytes
 
-	# PROPOSED ENCODER
-	encoder = Encoder(config, image, None)
-	compressed = encoder.encode_qoi()
-	# compressed = encoder.encode_packbits()
-	compressed_size = len(compressed) # bytes
+	# # PROPOSED ENCODER
+	# encoder = Encoder(config, image, None)
+	# compressed = encoder.encode_qoi()
+	# # compressed = encoder.encode_packbits()
+	# compressed_size = len(compressed) # bytes
 
 	output[TIME] = time.process_time() - start
 	output[RATIO] = original_size / compressed_size
@@ -99,6 +99,9 @@ def main():
 			for process in processor.as_completed(processes):
 				outputs.append(process.result())
 				bar.update(1)
+
+	# TODO: Dump all compressor results to big boy csv
+	# TODO: Analyze data in jupyter notebook to results folder
 
 	table = tabulate(outputs, headers = 'keys', tablefmt = 'simple_outline') # .replace('-', '━')
 	print(table)

@@ -27,10 +27,54 @@ def revert_delta_transform(data):
 		output.append(recovered)
 	return output
 
+def rescale(value):
+	return (value << 4) | (value >> 8)
+
+def unscale(value):
+	return value >> 4
+
 if __name__ == '__main__':
 
-	value = 3200
+	import numpy as np
+	arr = np.arange(4096)
 
+	print(arr)
+
+	arrB = np.vectorize(rescale)(arr)
+
+	print(arrB)
+
+	arrC = np.vectorize(unscale)(arrB)
+
+	print(arrC)
+
+	exit()
+
+
+	# for A in range(4096):
+
+	# A = 1095
+	# print(A, bin(A)[2:])
+
+	B = A << 4
+	# print(B, bin(B)[2:])
+
+	C = A >> (12 - 4)
+
+	# print(C, bin(C)[2:])
+
+	D = B | C
+	# print(A, D, bin(D)[2:])
+	# print(A, B, bin(B)[2:])
+
+	E = D >> 4
+	# print(E, bin(E)[2:])
+
+	print(arr)
+
+	exit()
+
+	value = 3200
 	header = 0x80
 
 	print('header', bin(header)[2:])

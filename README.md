@@ -28,11 +28,23 @@
 - Hirerichal Clustering: Create section skipping algorithm (binary search?)
 
 ## Ideas
-- CACHE: All previous values, index to most recent or most common 64 pixel colors for cache that AREN'T within delta limit
-- TILE COMPRESSION: Group pixels into (hilbert cluster?) sections and encode RLE in as single cluster
+- TILE COMPRESSION: Group pixels into (hilbert cluster?) sections and encode as single cluster
 - ZIPPER: Read image left edge, right edge, etc. in zipper format for vertical symmetry
 	- PROBLEM: Not perfect vertical symmetry, very bad offset error
-- FRACTAL: Take segments of image, cluster for similar segments, mesh together
+
+- FRACTAL: 
+	- Take NxN segments of image
+	- Look at neighboring segments
+	- Group segments if meshing is better
+
+	EXAMPLE:
+
+	let BlockA
+	let BlockB = BlockA.move(DOWN_3, RIGHT_4)
+
+	mesh = zip(BlockA, BlockB)
+	if AvgAbsDiff(mesh) < AvgAbsDiff(BlockA) + AvgAbsDiff(BlockB):
+		# mesh pixels from BlockA and BlockB
 
 ## TODO
 - Finish Cluster plugin
@@ -114,6 +126,8 @@
 - DICOM ALGORITHM: https://pydicom.github.io/pydicom/dev/tutorials/pixel_data/compressing.html#compressing-using-pydicom
 
 ## Important Sources
+
+- [Unavailable File Formats](https://en.wikipedia.org/wiki/List_of_file_formats)
 
 ### Lossless Compression
 - [QOI Blog](https://phoboslab.org/log/2021/11/qoi-fast-lossless-image-compression)

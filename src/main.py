@@ -2,9 +2,6 @@
 import sys
 sys.dont_write_bytecode = True
 
-from PIL import Image
-import numpy as np
-import hashlib
 import pydicom
 import argparse
 import time
@@ -39,18 +36,20 @@ def main():
 
 	DEMO_IMAGE_PATH = "C:/Users/taaha/Downloads/manifest-OtXaMwL56190865641215613043/QIN LUNG CT/QIN-LSC-0055/07-27-2003-1-CT Thorax wo Contrast-86597/5.000000-THORAX WO  3.0  B41 Soft Tissue-77621/1-016.dcm"
 	
-	input_path = args.file_path
-	if args.file_path == None or args.decode:
-		print(f'File not found, running demo')
-		input_path = DEMO_IMAGE_PATH
-	
-	image = pydicom.read_file(input_path).pixel_array
-
 	if args.encode:
+
+		input_path = args.file_path
+		
+		try:
+			original_dicom = pydicom.read_file(input_path).pixel_array
+		except:
+			print(f'File not found, running demo')
+			input_path = DEMO_IMAGE_PATH
+			original_dicom = pydicom.read_file(input_path).pixel_array
 
 		out_path = get_filename(input_path, True, config)
 
-		encoder = Encoder(config, image, out_path)
+		encoder = Encoder(config, original_dicom, out_path)
 		encoder.encode_qoi()
 		# encoder.encode_packbits()
 
@@ -67,18 +66,6 @@ def main():
 		output = decoder.decode_qoi()
 
 		print(f'\"{args.file_path}\" preview decoded to \"{out_path}\"')
-
-		# Confirming that reconstruction error is 0
-		# error_matrix = image - output
-		# error = np.count_nonzero(error_matrix)
-		# print(f'\nReconstruction Error: {error}')
-
-		# original_hash = hashlib.sha1(image.tobytes()).hexdigest()
-		# recovered_hash = hashlib.sha1(output.tobytes()).hexdigest()
-
-		# print(f'SHA1 Original Hash:  {original_hash}')
-		# print(f'SHA1 Recovered Hash: {recovered_hash}')
-
 
 if __name__ == '__main__':
 	main()

@@ -35,7 +35,7 @@ import zlib
 import sys
 
 from codec.curve import GeneralizedHilbertCurve
-from codec.cluster import Partitioner
+from codec.cluster import Partitioner, BlockPartitioner
 from codec.packbits import PackBits
 
 # Header byte tags
@@ -65,25 +65,11 @@ def signed(x, n_bits):
 		x -= max_value
 	return x
 
-class Cache:
+def rescale(value):
+	return (value << 4) | (value >> 8)
 
-	def __init__(self):
-		self.data = []
-	
-	def contains(self, value):
-		return value in self.data
-	
-	def add(self, value):
-		if self.contains(value):
-			value = self.data.pop(self.data.index(value))
-		self.data.insert(0, value)
-		if len(self.data) > 64:
-			self.data.pop()
-
-	def get_index(self, value):
-		if self.contains(value):
-			return self.data.index(value)
-		return None
+def unscale(value):
+	return value >> 4
 
 class Pixel:
 
@@ -191,7 +177,7 @@ class Encoder:
 		self.writer = ByteWriter()
 		self.out_path = out_path
 
-		self.hash_array = [Pixel() for _ in range(64)]
+		# self.hash_array = [Pixel() for _ in range(64)]
 		# self.cache = Cache()
 
 		self.stats = [['Section', 'Size (KB)', 'Ratio (x)']]
@@ -317,28 +303,42 @@ class Encoder:
 		if self.config['zipper_transform']:
 			pixel_order = self.curve.zipper_transform(pixel_order)
 
+		# if self.config['segmentation_transform']:
+		# 	pixels = self.image.tolist()
+		# 	from itertools import chain
+		# 	pixels = list(chain.from_iterable(pixels))
+		# 	data = [pixels[i] for i in pixel_order]
+		# 	self.partition = Partitioner(data, block_size = 64)
+		# 	self.partition.initial_cluster()
+		# 	groups = self.partition.iterative_joining()
+		# 	self.cluster_jumps = self.partition.get_group_jumps()
+		# 	# print(self.cluster_jumps)
+		# 	if self.config['verbose']:
+		# 		print(len(self.cluster_jumps))
+		# 	pixel_order = groups
+		
 		if self.config['segmentation_transform']:
-			pixels = self.image.tolist()
-			from itertools import chain
-			pixels = list(chain.from_iterable(pixels))
-			data = [pixels[i] for i in pixel_order]
-			self.partition = Partitioner(data, block_size = 8)
-			self.partition.initial_cluster()
-			groups = self.partition.iterative_joining()
-			self.cluster_jumps = self.partition.get_group_jumps()
-			# print(self.cluster_jumps)
-			if self.config['verbose']:
-				print(len(self.cluster_jumps))
 
-			pixel_order = groups
+			# Getting initial reordered
+			pixels = self.image.flatten().tolist()
+			data = [pixels[i] for i in pixel_order]
+
+			# Setting up reorganizer
+			self.partition = BlockPartitioner(data, block_size = 16)
+			self.partition.set_delta_changes_array()
+			self.partition.initial_partition()
+
+			# Reorganizing pixels based on block partitioning algorithm
+			pixel_order = self.partition.block_partition()
 
 		for i in pixel_order:
 
-			if self.config['segmentation_transform']:
-				px = i.to_bytes(2, sys.byteorder)
-			else:
-				index = pixel_jump * i
-				px = self.image_bytes[index : index + pixel_jump]
+			# if self.config['segmentation_transform']:
+			# 	px = i.to_bytes(2, sys.byteorder)
+			# else:
+
+			index = pixel_jump * i
+			px = self.image_bytes[index : index + pixel_jump]
 
 			n += 1
 
@@ -442,7 +442,7 @@ class Decoder:
 		self.reader = ByteReader(self.file_bytes)
 		self.out_path = out_path
 
-		self.hash_array = [Pixel() for _ in range(64)]
+		# self.hash_array = [Pixel() for _ in range(64)]
 
 	@property
 	def MAGIC(self):
@@ -462,6 +462,7 @@ class Decoder:
 		self.bytes_per_channel = self.reader.read()
 
 		self.fractal_transform = bool(self.reader.read())
+		# self.fractal_transform = False
 
 		pixel_jump = self.channels * self.bytes_per_channel
 
@@ -490,8 +491,8 @@ class Decoder:
 
 			n += 1
 
-			index_pos = pixel.wrap_hash
-			self.hash_array[index_pos].update(pixel.bytes)
+			# index_pos = pixel.wrap_hash
+			# self.hash_array[index_pos].update(pixel.bytes)
 
 			if index >= 0:
 				self.pixel_data[index : index + pixel_jump] = pixel.bytes
@@ -546,27 +547,25 @@ class Decoder:
 
 		if self.out_path is not None:
 
-			pixels = np.frombuffer(bytes(self.pixel_data), dtype = 'uint16').reshape(self.width, self.height)
-
-			# pixels = np.zeros(self.size, dtype = np.uint16)
-			# pixels[self.fulls] = 4095
-			# pixels = pixels.reshape(self.width, self.height)
-
-			preview = pixels.copy()
-
-			# preview[:, ::8] = 4095
-			# preview[::8, :] = 4095
-
 			# Scale from 12 bit image to 16 bit display
-			preview *= np.uint16(65536 / 4096)
+			pixels = np.frombuffer(bytes(self.pixel_data), dtype = 'uint16').reshape(self.width, self.height)
+			preview = np.vectorize(rescale)(pixels).astype('uint16')
 
+			# preview = preview.flatten()
+			# preview = np.zeros(self.size, dtype = np.uint16)
+			# preview[self.fulls] = 60000
+			# preview = preview.reshape(self.width, self.height)
+
+			# preview[:, ::8] = 30000
+			# preview[::8, :] = 30000
+
+			# NOTE: Writing as PNG is a time bottleneck
 			import imageio
-			imageio.imwrite(self.out_path, preview)
+			imageio.imwrite(self.out_path, preview, format = self.config['decode_format'])
 
 			return pixels
 
 		return self.pixel_data
-	
 	
 	def decode_packbits(self):
 
@@ -601,7 +600,11 @@ class Decoder:
 
 			arr = np.frombuffer(bytes(inter), dtype = 'uint16').reshape(self.width, self.height)
 			
-			plt.imshow(arr, cmap = 'gray')
-			plt.savefig(self.out_path, bbox_inches = 'tight')
-		
+			# Scale from 12 bit image to 16 bit display
+			preview = arr * 16
+
+			# NOTE: Decoder bottleneck is writing as png
+			import imageio
+			imageio.imwrite(self.out_path, preview)
+
 			return arr
