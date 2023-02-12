@@ -4,7 +4,9 @@ import os
 
 sys.dont_write_bytecode = True
 sys.path.append(os.path.join('scripts', '..', 'src'))
+sys.path.append(os.path.join('scripts', '..', 'lib'))
 
+from collections import defaultdict
 import json
 import time
 import random
@@ -15,69 +17,77 @@ from tabulate import tabulate
 from tqdm import tqdm
 
 import pydicom
-from PIL import Image
 
+# Comparison standards
 from png import array_to_png
-from codec.core import Encoder, Decoder
+from jpeg2000 import png_to_jpeg2000
 
+# Proposed encoder
+from codec.core import Encoder
+
+# Data keys
 FILE = 'File'
-RATIO = 'Ratio (x)'
-SAVED = 'Space Saved (%)'
-TIME = 'Time (s)'
+RAW = 'Raw'
+PNG = 'PNG'
+JP2 = 'JP2'
+RLE = 'RLE'
+KHN = 'KHN'
 
-def new_compressor(path, config):
+# Directories 
+# dataset_directory = 'C:/Users/taaha/Downloads/ct_nonequi_tilt/'
+dataset_directory = 'C:/Users/taaha/Downloads/manifest-OtXaMwL56190865641215613043/QIN LUNG CT/R0223/12-05-2001-NA-CT CHEST WITH CONTRAST-15336/2.000000-NA-08982/'
+# dataset_directory = 'C:/Users/taaha/Downloads/manifest-OtXaMwL56190865641215613043/QIN LUNG CT/'
+results_file = 'results/encoder-comparisons.csv'
+temp_directory = 'C:/Users/taaha/Downloads/temp-encoded-dataset'
 
-	# r = random.uniform(0.0, 10.0)
-	r = 1.0
+def get_temp_file_path(filepath, uid, extension):
+	input_path, input_file = os.path.split(filepath)
+	_, input_extension = os.path.splitext(input_file)
+	output_file = input_file.replace(input_extension, extension)
+	output_path = f'{temp_directory}/({uid:04})-{output_file}'
+	return output_path
 
-	output = {
-		FILE: os.path.basename(path), 
-		RATIO: r,
-		SAVED: 100 - (100 / r),
-		TIME: random.random()
-	}
+def comparison(path, config, uid = None):
 
+	ufile = f'({uid:04})-{os.path.basename(path)}'
+
+	# Defaults for debugging
+	output = dict.fromkeys([FILE, RAW, PNG, JP2, RLE, KHN], 1)
+	output[FILE] = ufile
 	# return output
-
-	original_size = os.path.getsize(path) # bytes
 
 	ds = pydicom.read_file(path)
 	image = ds.pixel_array
 
-	start = time.process_time()
+	# RAW
+	raw_size = len(ds.PixelData)
+	output[RAW] = raw_size
+	
+	# PNG
+	png_saved = get_temp_file_path(path, uid, '.png')
+	array_to_png(image, png_saved)
+	output[PNG] = os.path.getsize(png_saved)
 
-	# # PNG ENCODER
-	tmp_saved = f'C:/Users/taaha/Downloads/rle_ct_dataset/{os.path.basename(path)[:-4]}.png'
-	array_to_png(image, tmp_saved)
-	compressed_size = os.path.getsize(tmp_saved)
+	# JPEG2000 LOSSLESS
+	jp2_saved = get_temp_file_path(path, uid, '.jp2')
+	png_to_jpeg2000(png_saved, jp2_saved)
+	output[JP2] = os.path.getsize(jp2_saved)
 
-	# # BUILTIN RLE LOSSLESS ENCODER
-	# tmp_saved = f'C:/Users/taaha/Downloads/rle_ct_dataset/{os.path.basename(path)}'
-	# ds.compress(pydicom.uid.RLELossless, image, encoding_plugin = 'pylibjpeg')
-	# ds.save_as(tmp_saved)
-	# compressed_size = os.path.getsize(tmp_saved) # bytes
+	# BUILTIN RLE
+	ds.compress(pydicom.uid.RLELossless, image) # , encoding_plugin = 'pylibjpeg')
+	output[RLE] = len(ds.PixelData)
 
-	# # PROPOSED ENCODER
-	# encoder = Encoder(config, image, None)
-	# compressed = encoder.encode_qoi()
-	# # compressed = encoder.encode_packbits()
-	# compressed_size = len(compressed) # bytes
-
-	output[TIME] = time.process_time() - start
-	output[RATIO] = original_size / compressed_size
-	output[SAVED] = 100 - (100 / output[RATIO])
+	# PROPOSED
+	encoder = Encoder(config, image, out_path = None)
+	compressed = encoder.encode_qoi()
+	output[KHN] = len(compressed)
 
 	return output
 
 def main():
 
-	directory = os.getcwd().split('\\')[-1]
 	config = json.load(open('src/config.json', 'r'))
 	config['verbose'] = False
-
-	# dataset_directory = 'C:/Users/taaha/Downloads/ct_nonequi_tilt/'
-	dataset_directory = 'C:/Users/taaha/Downloads/manifest-OtXaMwL56190865641215613043/QIN LUNG CT/R0223/12-05-2001-NA-CT CHEST WITH CONTRAST-15336/2.000000-NA-08982/'
-	# dataset_directory = 'C:/Users/taaha/Downloads/manifest-OtXaMwL56190865641215613043/QIN LUNG CT/'
 
 	processes = []
 	outputs = []
@@ -88,7 +98,7 @@ def main():
 			# if os.path.basename(filename).startswith('1-1'):
 			# 	continue
 
-			processes.append(executor.submit(new_compressor, filename, config))
+			processes.append(executor.submit(comparison, filename, config, n))
 			
 			# if n > 200:
 			# 	break
@@ -100,28 +110,15 @@ def main():
 				outputs.append(process.result())
 				bar.update(1)
 
-	# TODO: Dump all compressor results to big boy csv
-	# TODO: Analyze data in jupyter notebook to results folder
+	outputs.sort(key = lambda a: a[FILE])
+
+	# Dump all comparison results to big boy csv
+	with open(results_file, 'w') as fout:
+		fout.write(','.join(outputs[0].keys()))
+		for line in outputs:
+			fout.write('\n' + ','.join(map(str, line.values())))
 
 	table = tabulate(outputs, headers = 'keys', tablefmt = 'simple_outline') # .replace('-', '━')
-	print(table)
-
-	ratios = 0.0
-	times = 0.0
-
-	for output in outputs:
-		times += output[TIME]
-		ratios += output[RATIO]
-
-	times /= len(outputs)
-	ratios /= len(outputs)
-
-	info = []
-	info.append(['Metric', 'Value'])
-	info.append(['Mean ' + RATIO, ratios])
-	info.append(['Mean ' + TIME, times])
-
-	table = tabulate(info, headers = 'firstrow', tablefmt = 'simple_outline')
 	print(table)
 
 if __name__ == '__main__':

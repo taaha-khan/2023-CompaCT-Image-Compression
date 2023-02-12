@@ -351,6 +351,8 @@ class BlockPartitioner:
 					# TODO: Look at best in preview or look at first efficient?
 					break
 
+					# TODO: Continue off after latest mesh instead of popping back?
+
 		print(f'num_skips: {num_skips}')
 		return PIXEL_ORDER.astype(np.int32)
 

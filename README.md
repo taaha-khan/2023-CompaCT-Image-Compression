@@ -136,6 +136,7 @@
 - [QOI Analysis](https://wiesmann.codiferes.net/wordpress/archives/33156)
 - [WEBP Spec](https://developers.google.com/speed/webp/docs/webp_lossless_bitstream_specification)
 - [PNG YouTube](https://www.youtube.com/watch?v=EFUYNoFRHQI)
+- [JPEG2000-Lossless Documentation](https://github.com/uclouvain/openjpeg/wiki/DocJ2KCodec)
 
 ### DICOM CT Dataset
 - [GE, non-equistant, gantry/detector tilt](https://www.aliza-dicom-viewer.com/download/datasets)

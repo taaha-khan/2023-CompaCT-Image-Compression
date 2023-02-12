@@ -13,8 +13,8 @@
 	"delta_transform": true,
 	"zipper_transform": false,
 
-	"fractal_transform": true,
-	"segmentation_transform": true,
+	"fractal_transform": false,
+	"segmentation_transform": false,
 
 	"deflate_compression": true,
 

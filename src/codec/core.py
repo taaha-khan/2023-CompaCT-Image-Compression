@@ -462,7 +462,7 @@ class Decoder:
 		self.bytes_per_channel = self.reader.read()
 
 		self.fractal_transform = bool(self.reader.read())
-		# self.fractal_transform = False
+		self.fractal_transform = False
 
 		pixel_jump = self.channels * self.bytes_per_channel
 
