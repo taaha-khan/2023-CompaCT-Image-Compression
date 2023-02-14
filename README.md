@@ -1,31 +1,37 @@
 
 # Image Compression
-### Taaha Khan 2023 Science Expo Project
+### Taaha Khan 2023 Engineering Expo Project
 
 ## Title Ideas
 
 **Keywords**
-- Improved/Applying/With/Through/Via
+- Improved, Applying, With, Through, Via
 - Lossless, Perfect Quality
 - HDR (High Dynamic Range), High (Bit/Color) Depth
 - Image Compression
-- CT (Computed Tomography) Scan
+- CT Scan (Computed Tomography)
 - Pixel
 - Fractal
-- Topological
-- Reordering/Restructering/Transform
-- Heuristic Hierarchical Clustering/Segmentation
+- Reordering, Restructering, Transform
+- Heuristic Clustering, Segmentation
+- Secure, Encrypted
+- CT-Lite
 
-**High Color Depth CT Scan Compression Applying Heuristic Hierarchical Clustering and Fractal Topological Pixel Reordering**
+**High Color Depth CT Scan Compression Applying Heuristic Clustering and Fractal Topological Pixel Reordering**
 
-**Heuristic Fractal Pixel Segmentation for High Color Depth CT Scan Compression**
+**CT-Lite: Heuristic Fractal Pixel Segmentation for Secure Lossless High Color Depth CT Scan Compression**
 
 ## Completed
 - Port QOI and Gilbert for python
 - Plugin Gilbert to QOI ordering
 - Apply ZLib DEFLATE compression to output
 - Get SRGB and HDR testing datasets
-- Hirerichal Clustering: Create section skipping algorithm (binary search?)
+- Compare compression ratio, BPP with competitors
+
+## TODO
+- Encrypt bytestream
+- Finish Cluster plugin
+- Write up slideshow and abstract
 
 ## Ideas
 - TILE COMPRESSION: Group pixels into (hilbert cluster?) sections and encode as single cluster
@@ -45,11 +51,6 @@
 	mesh = zip(BlockA, BlockB)
 	if AvgAbsDiff(mesh) < AvgAbsDiff(BlockA) + AvgAbsDiff(BlockB):
 		# mesh pixels from BlockA and BlockB
-
-## TODO
-- Finish Cluster plugin
-- Compare compression ratio, BPP with competitors
-- Write up slideshow and abstract
 
 ## Lossless Encoder
 

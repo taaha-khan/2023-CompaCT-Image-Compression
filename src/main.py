@@ -50,8 +50,7 @@ def main():
 		out_path = get_filename(input_path, True, config)
 
 		encoder = Encoder(config, original_dicom, out_path)
-		encoder.encode_qoi()
-		# encoder.encode_packbits()
+		encoder.encode()
 
 		print(f'\n\"{input_path}\" encoded to \"{out_path}\"')
 
@@ -63,7 +62,7 @@ def main():
 		out_path = get_filename(args.file_path, False, config)
 
 		decoder = Decoder(config, file_bytes, out_path)
-		output = decoder.decode_qoi()
+		output = decoder.decode()
 
 		print(f'\"{args.file_path}\" preview decoded to \"{out_path}\"')
 

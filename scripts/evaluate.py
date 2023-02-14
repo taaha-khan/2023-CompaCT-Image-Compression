@@ -10,17 +10,18 @@ from collections import defaultdict
 import json
 import time
 import random
-import glob
 
 import concurrent.futures as processor
 from tabulate import tabulate
 from tqdm import tqdm
 
 import pydicom
+import glob
 
 # Comparison standards
-from png import array_to_png
-from jpeg2000 import png_to_jpeg2000
+import png
+import jpeg2000
+import zlib
 
 # Proposed encoder
 from codec.core import Encoder
@@ -28,10 +29,11 @@ from codec.core import Encoder
 # Data keys
 FILE = 'File'
 RAW = 'Raw'
+ZIP = 'ZIP'
 PNG = 'PNG'
-JP2 = 'JP2'
 RLE = 'RLE'
-KHN = 'KHN'
+JP2 = 'JP2'
+CTL = 'CTL' # PROPOSED
 
 # Directories 
 # dataset_directory = 'C:/Users/taaha/Downloads/ct_nonequi_tilt/'
@@ -47,40 +49,44 @@ def get_temp_file_path(filepath, uid, extension):
 	output_path = f'{temp_directory}/({uid:04})-{output_file}'
 	return output_path
 
-def comparison(path, config, uid = None):
+def comparison(input_path, config, uid = None):
 
-	ufile = f'({uid:04})-{os.path.basename(path)}'
+	ufile = f'({uid:04})-{os.path.basename(input_path)}'
 
 	# Defaults for debugging
-	output = dict.fromkeys([FILE, RAW, PNG, JP2, RLE, KHN], 1)
+	output = dict.fromkeys([FILE, RAW, ZIP, PNG, RLE, JP2, CTL], 1)
 	output[FILE] = ufile
 	# return output
 
-	ds = pydicom.read_file(path)
+	ds = pydicom.read_file(input_path)
 	image = ds.pixel_array
 
-	# RAW
+	# Raw
 	raw_size = len(ds.PixelData)
 	output[RAW] = raw_size
 	
+	# ZIP (max level)
+	zip_data = zlib.compress(image.tobytes(), level = 9)
+	output[ZIP] = len(zip_data)
+
 	# PNG
-	png_saved = get_temp_file_path(path, uid, '.png')
-	array_to_png(image, png_saved)
+	png_saved = get_temp_file_path(input_path, uid, '.png')
+	png.array_to_png(image, png_saved)
 	output[PNG] = os.path.getsize(png_saved)
 
 	# JPEG2000 LOSSLESS
-	jp2_saved = get_temp_file_path(path, uid, '.jp2')
-	png_to_jpeg2000(png_saved, jp2_saved)
+	jp2_saved = get_temp_file_path(input_path, uid, '.jp2')
+	jpeg2000.png_to_jpeg2000(png_saved, jp2_saved)
 	output[JP2] = os.path.getsize(jp2_saved)
 
-	# BUILTIN RLE
+	# RLE BUILTIN
 	ds.compress(pydicom.uid.RLELossless, image) # , encoding_plugin = 'pylibjpeg')
 	output[RLE] = len(ds.PixelData)
 
 	# PROPOSED
-	encoder = Encoder(config, image, out_path = None)
-	compressed = encoder.encode_qoi()
-	output[KHN] = len(compressed)
+	# encoder = Encoder(config, image, out_path = None)
+	# compressed = encoder.encode()
+	# output[CTL] = len(compressed)
 
 	return output
 
@@ -110,6 +116,7 @@ def main():
 				outputs.append(process.result())
 				bar.update(1)
 
+	# Sort by filename
 	outputs.sort(key = lambda a: a[FILE])
 
 	# Dump all comparison results to big boy csv
@@ -118,7 +125,7 @@ def main():
 		for line in outputs:
 			fout.write('\n' + ','.join(map(str, line.values())))
 
-	table = tabulate(outputs, headers = 'keys', tablefmt = 'simple_outline') # .replace('-', '━')
+	table = tabulate(outputs, headers = 'keys', tablefmt = 'simple_outline')
 	print(table)
 
 if __name__ == '__main__':

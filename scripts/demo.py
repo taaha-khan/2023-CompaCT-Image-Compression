@@ -36,13 +36,12 @@ def main():
 	input_path = r"C:\Users\taaha\Downloads\1-55.dcm"
 	image = pydicom.read_file(input_path).pixel_array
 
-	encoded_path = 'data/working/testing.khn'
+	encoded_path = f'data/working/testing.{config["extension"]}'
 
 	start_encode = time.process_time()
 
 	encoder = Encoder(config, image, encoded_path)
-	encoder.encode_qoi()
-	# encoder.encode_packbits()
+	encoder.encode()
 
 	elapsed_encode = time.process_time() - start_encode
 	print(f'\nEncoding Elapsed Time: {elapsed_encode:.2f} sec')
@@ -59,8 +58,7 @@ def main():
 	start_decode = time.process_time()
 
 	decoder = Decoder(config, file_bytes, decoded_path)
-	output = decoder.decode_qoi()
-	# output = decoder.decode_packbits()
+	output = decoder.decode()
 
 	elapsed_decode = time.process_time() - start_decode
 	print(f'Decoding Elapsed Time: {elapsed_decode:.2f} sec')

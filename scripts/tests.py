@@ -35,6 +35,26 @@ def unscale(value):
 
 if __name__ == '__main__':
 
+	from Crypto.Cipher import AES
+	from Crypto.Random import get_random_bytes
+
+	key = get_random_bytes(24)
+	print(key.hex())
+
+	data = b'data'
+
+	cipher = AES.new(key, AES.MODE_CFB)
+	cipher_text = cipher.encrypt(data)
+
+	print(cipher_text.hex())
+
+	decrypt = decrypt_cipher = AES.new(key, AES.MODE_CFB, iv = cipher.iv)
+	output = decrypt_cipher.decrypt(cipher_text)
+
+	print(output.hex())
+
+	exit()
+
 	import numpy as np
 	arr = np.arange(4096)
 

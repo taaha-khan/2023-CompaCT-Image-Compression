@@ -216,7 +216,10 @@ class BlockPartitioner:
 
 	def initial_partition(self):
 		array = np.asarray(self.data, dtype = np.int32)
+		
 		self.blocks = array.reshape((self.size // self.block_size, self.block_size))
+		self.block_orders = np.arange(self.size, dtype = np.int32).reshape(self.blocks.shape)
+
 		return self.blocks
 
 	def set_delta_changes_array(self):
@@ -253,30 +256,36 @@ class BlockPartitioner:
 		# print('block_deltas', block_deltas)
 
 		# FIXME: Remove or actually use
-		difficult_blocks = sorted(block_deltas, key = block_deltas.get, reverse = True)
-		print('difficult_blocks', len(difficult_blocks))
+		# difficult_blocks = sorted(block_deltas, key = block_deltas.get, reverse = True)
+		# print('difficult_blocks', len(difficult_blocks))
 
 		completed = np.full(self.size // self.block_size, False)
 
 		output = []
 
-		PIXEL_ORDER = np.zeros(self.size)
+		PIXEL_ORDER = np.zeros(self.size, dtype = np.int32)
+		BLOCK_JUMPS = {}
+
 		running_index = 0
 
 		num_skips = 0
 
-		# O(num_blocks = size / block_size)
+		# O(num_blocks^2)
 		for i, block in enumerate(self.blocks):	
 			
 			start_index = i * self.block_size
 			ended_index = start_index + self.block_size - 1
 
 			# Block doesn't need help
-			if i not in block_deltas:
-				PIXEL_ORDER[running_index : running_index + self.block_size] = np.arange(start_index, ended_index + 1)
-				running_index += self.block_size
-				continue
+			if i not in block_deltas and not completed[i]:
+				# print(f'running_index: [{running_index} : {running_index + self.block_size}] | {self.block_orders[i]}')
 				
+				PIXEL_ORDER[running_index : running_index + self.block_size] = self.block_orders[i]
+				running_index += self.block_size
+
+				completed[i] = True
+				continue
+
 			if completed[i]:
 				continue
 
@@ -297,6 +306,8 @@ class BlockPartitioner:
 			# Block needs help: preview future
 			# O(jump_size = 64)
 
+			meshed = False
+
 			# FIXME: Iterate future blocks that aren't completed
 			# enumerate(self.blocks[next_i + 1 : next_i + 64])
 			for j, next_block in enumerate(self.blocks[i + 1 : i + 64]):
@@ -314,13 +325,6 @@ class BlockPartitioner:
 				# print('A', A)
 				# print('B', B)
 
-				# EX:
-				# A = [0,  100, 200, 300] # [0, 1, 1, 1]
-				# B = [50, 150, 250, 350] # [0, 1, 1, 1]
-				# C = [0, 50, 100, 150, 200, 250, 300, 350]
-				# D = [0, 50, 50,  50,  50,  50,  50,  50]
-				# E = [0, 0,  0,   0,   0,   0,   0,   0]
-
 				# Interleaving A and B
 				C = np.empty((2 * self.block_size), dtype = A.dtype)
 				C[0::2] = A
@@ -337,15 +341,21 @@ class BlockPartitioner:
 				# FIXME: Cutoff
 				if num_changes < current_delta - 2:
 
+					meshed = True
+
 					num_skips += 1
+					# print(f'mesh {i} and {next_index} (jump = {next_index - i})')
+
+					BLOCK_JUMPS[i] = next_index
 					
 					# JUMP
-					# print(f'jump and mesh {i} and {next_index}')
+					completed[i] = True
 					completed[next_index] = True
 
 					# FIXME: Looks gross
-					PIXEL_ORDER[running_index : running_index + 2 * self.block_size : 2] = np.arange(start_index, start_index + self.block_size)
-					PIXEL_ORDER[running_index + 1 : running_index + 2 * self.block_size + 1 : 2] = np.arange(next_index * self.block_size, next_index * self.block_size + self.block_size)
+					PIXEL_ORDER[running_index : running_index + 2 * self.block_size : 2] = self.block_orders[i]
+					PIXEL_ORDER[running_index + 1 : running_index + 2 * self.block_size + 1 : 2] = self.block_orders[next_index]
+					
 					running_index += 2 * self.block_size
 
 					# TODO: Look at best in preview or look at first efficient?
@@ -353,8 +363,21 @@ class BlockPartitioner:
 
 					# TODO: Continue off after latest mesh instead of popping back?
 
+			# Couldn't find help
+			if not meshed:
+				# print(f'running_index: [{running_index} : {running_index + self.block_size}] | {self.block_orders[i]}')
+				PIXEL_ORDER[running_index : running_index + self.block_size] = self.block_orders[i]
+				running_index += self.block_size
+				completed[i] = True
+
 		print(f'num_skips: {num_skips}')
-		return PIXEL_ORDER.astype(np.int32)
+
+		all_orders = set(np.arange(self.size))
+		got_orders = set(PIXEL_ORDER)
+
+		print(f'incomplete: {all_orders - got_orders}')
+
+		return (PIXEL_ORDER, BLOCK_JUMPS)
 
 if __name__ == '__main__':
 
@@ -378,13 +401,6 @@ if __name__ == '__main__':
 
 	a = p.block_partition()
 	print(a)
-
-	# a = p.set_delta_changes_array(p.data)
-	# print(a)
-
-	# print(p.get_num_delta_changes(10, 20))
-
-	# print(data)
 
 	# p = Partitioner(data, block_size = 4)
 	# p.initial_cluster()

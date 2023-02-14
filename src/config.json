@@ -1,7 +1,7 @@
 {
 
-	"magic": "khan",
-	"extension": "khn",
+	"magic": "lite",
+	"extension": "ctl",
 
 	"decode_format": "png",
 
@@ -14,9 +14,12 @@
 	"zipper_transform": false,
 
 	"fractal_transform": false,
-	"segmentation_transform": false,
+	"segmentation_transform": true,
 
 	"deflate_compression": true,
+
+	"aes_encryption": false,
+	"secret_key": "5c644ee6a73206f8aec0bf5e5175e7bb",
 
 	"verbose": true
 
