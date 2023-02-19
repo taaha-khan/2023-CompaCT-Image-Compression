@@ -35,6 +35,61 @@ def unscale(value):
 
 if __name__ == '__main__':
 
+	import numpy as np
+
+	with open('data/working/pixel_order.txt', 'r') as fin:
+
+		a = np.asarray(list(map(int, fin.readline().split(' ')[:-1])))
+		b = np.asarray(list(map(int, fin.readline().split(' ')[:-1])))
+
+		r = list(sorted(list(a)))
+
+		print(r == list(a))
+
+		for i in range(1, len(a)):
+			P = a[i - 1]
+			A = a[i]
+
+			jump = A - P
+
+			if jump > 1:
+				print(P, A)
+
+		exit()
+
+		for i in range(len(b)):
+
+			A = None
+			if i < len(a):
+				A = a[i]
+			B = b[i]
+
+
+			if not (51000 < i < 53500):
+				continue
+
+			# if A != B:
+			# 	print(f'{i} : {A} | {B} ---')
+			# else:
+			# 	print(f'{i} : {A} | {B}')
+
+			if i > 90000:
+				break
+
+		print(len(a))
+		print(len(b))
+
+		error_matrix = a - b
+		error = np.count_nonzero(error_matrix)
+		print(f'error {error}')
+
+		# print(a == b)
+
+		w = np.where(a != b)[0].tolist()
+		# print(w)
+
+	exit()
+
 	from Crypto.Cipher import AES
 	from Crypto.Random import get_random_bytes
 

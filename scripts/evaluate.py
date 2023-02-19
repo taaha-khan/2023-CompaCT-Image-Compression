@@ -33,7 +33,7 @@ ZIP = 'ZIP'
 PNG = 'PNG'
 RLE = 'RLE'
 JP2 = 'JP2'
-CTL = 'CTL' # PROPOSED
+CCT = 'CCT' # PROPOSED
 
 # Directories 
 # dataset_directory = 'C:/Users/taaha/Downloads/ct_nonequi_tilt/'
@@ -54,7 +54,7 @@ def comparison(input_path, config, uid = None):
 	ufile = f'({uid:04})-{os.path.basename(input_path)}'
 
 	# Defaults for debugging
-	output = dict.fromkeys([FILE, RAW, ZIP, PNG, RLE, JP2, CTL], 1)
+	output = dict.fromkeys([FILE, RAW, ZIP, PNG, RLE, JP2, CCT], 1)
 	output[FILE] = ufile
 	# return output
 
@@ -84,9 +84,9 @@ def comparison(input_path, config, uid = None):
 	output[RLE] = len(ds.PixelData)
 
 	# PROPOSED
-	# encoder = Encoder(config, image, out_path = None)
-	# compressed = encoder.encode()
-	# output[CTL] = len(compressed)
+	encoder = Encoder(config, image, out_path = None)
+	compressed = encoder.encode()
+	output[CCT] = len(compressed)
 
 	return output
 
@@ -103,11 +103,7 @@ def main():
 		for n, filename in enumerate(glob.glob(dataset_directory + '**/*.dcm', recursive = True)):
 			# if os.path.basename(filename).startswith('1-1'):
 			# 	continue
-
 			processes.append(executor.submit(comparison, filename, config, n))
-			
-			# if n > 200:
-			# 	break
 
 		print(f'{len(processes)} testing images queued on {os.cpu_count()} threads')
 

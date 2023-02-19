@@ -1,26 +1,40 @@
 {
 
-	"magic": "lite",
-	"extension": "ctl",
+	"magic": "pact",
+	"extension": "cct",
 
-	"decode_format": "png",
+	"verbose": true,
+	
+	"block_size": 16,
 
-	"channels": 1,
-	"bytes_per_channel": 2,
+	"encoder": {
 
-	"end_of_file": 59,
+		"channels": 1,
+		"bytes_per_channel": 2,
+	
+		"end_of_file": 59,
 
-	"delta_transform": true,
-	"zipper_transform": false,
+		"aes_encryption": false,
+		"deflate_compression": true,
 
-	"fractal_transform": false,
-	"segmentation_transform": true,
+		"transforms" : {
 
-	"deflate_compression": true,
+			"delta": true,
+			"zipper": false,
 
-	"aes_encryption": false,
-	"secret_key": "5c644ee6a73206f8aec0bf5e5175e7bb",
+			"fractal": true,
+			"segmentation": true
 
-	"verbose": true
+		}
+
+	},
+
+	"decoder": {
+
+		"secret_key": "5c644ee6a73206f8aec0bf5e5175e7bb",
+	
+		"decode_format": "png"
+
+	}
 
 }

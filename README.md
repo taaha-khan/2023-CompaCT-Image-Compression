@@ -5,21 +5,24 @@
 ## Title Ideas
 
 **Keywords**
-- Improved, Applying, With, Through, Via
+- Improved, Application, Via
 - Lossless, Perfect Quality
 - HDR (High Dynamic Range), High (Bit/Color) Depth
 - Image Compression
 - CT Scan (Computed Tomography)
-- Pixel
 - Fractal
-- Reordering, Restructering, Transform
+- Reordering, Restructering, Transform, Meshing
 - Heuristic Clustering, Segmentation
 - Secure, Encrypted
-- CT-Lite
+- CT-Lite, LiteCT, CompaCT, FraCTal
 
-**High Color Depth CT Scan Compression Applying Heuristic Clustering and Fractal Topological Pixel Reordering**
+**ChatGPT**:
+	- Revolutionizing Medical Imaging: Heuristic Fractal Pixel Segmentation for Secure, Lossless, and Efficient Compression of DICOM Images
+	- Fractal-based Pixel Segmentation for Enhanced Compression of DICOM Medical Imaging (FPE-DICOM)
 
-**CT-Lite: Heuristic Fractal Pixel Segmentation for Secure Lossless High Color Depth CT Scan Compression**
+**CompaCT: Heuristic Fractal Pixel Segmentation for Secure Lossless High Color Depth CT Scan Compression**
+
+**CompaCT: A Novel Application of Heuristic Fractal Pixel Segmentation for Secure Lossless High Color Depth CT Scan Compression**
 
 ## Completed
 - Port QOI and Gilbert for python
@@ -27,10 +30,10 @@
 - Apply ZLib DEFLATE compression to output
 - Get SRGB and HDR testing datasets
 - Compare compression ratio, BPP with competitors
+- Finish Cluster plugin, entropy heuristic
 
 ## TODO
 - Encrypt bytestream
-- Finish Cluster plugin
 - Write up slideshow and abstract
 
 ## Ideas
@@ -55,10 +58,6 @@
 ## Lossless Encoder
 
 - More than 8 bits per color component (16) for [HDR](https://en.wikipedia.org/wiki/Multi-exposure_HDR_capture) user market (medical)
-
-- Improved RGB color transform ([YCoCg-R](https://en.wikipedia.org/wiki/YCoCg#The_lifting-based_YCoCg-R_variation)?)
-
-- Consider all (A, B, C) color components as one collective "pixel"
 
 - Read image pixel deltas in redundancy creating order for easier deflation in final compression stage (Raster scan is suboptimal because it jumps from right edge to the left, which can't gurantee significant correlation)
 
@@ -111,19 +110,17 @@
 
 		MAXMIMIZES: cache, near previous, run length
 
-		**Every mf already done this**
-	
 - Apply QOI or PackBits based condense algorithm (prefer byte alignment)
 	1. Run-length encoding
-	2. Recent palette cache index
-	3. Near previous difference encoding
-	4. Near previous 2-byte difference encoding
-	5. Last case: Full pixel values
+	2. Near previous difference encoding
+	3. Last case: Full pixel values
 
 - Apply Post-processing DEFLATE (LZ77 + Huffman coding)
 
-## Compare Compression Ratio, Speed
-- Lossless: PNG, WebP, FLIF, JPEG-LS, JPEG2000, QOI, [HDR](https://en.wikipedia.org/wiki/Category:High_dynamic_range_file_formats)
+- Apply Post-compression encryption (AES)
+
+## Compare Compression Ratio
+- Lossless: PNG, FLIF, JPEG2000, QOI, ZIP, RLE, [HDR](https://en.wikipedia.org/wiki/Category:High_dynamic_range_file_formats)
 - DICOM ALGORITHM: https://pydicom.github.io/pydicom/dev/tutorials/pixel_data/compressing.html#compressing-using-pydicom
 
 ## Important Sources

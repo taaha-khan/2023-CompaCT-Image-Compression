@@ -19,7 +19,7 @@ def get_filename(path, is_encoding, config):
 	name, filetype = filename.split('.')
 
 	transfer_type = 'encoded' if is_encoding else 'decoded'
-	filetype = config['extension'] if is_encoding else config['decode_format']
+	filetype = config['extension'] if is_encoding else config['decoder']['decode_format']
 
 	renamed = f'{path}/{transfer_type}-{name}.{filetype}'
 	return renamed
@@ -33,7 +33,7 @@ def main():
 	print(f'\n==================== [ENCODING] ====================\n')
 
 	# input_path = "C:/Users/taaha/Downloads/manifest-OtXaMwL56190865641215613043/QIN LUNG CT/QIN-LSC-0055/07-27-2003-1-CT Thorax wo Contrast-86597/5.000000-THORAX WO  3.0  B41 Soft Tissue-77621/1-016.dcm"
-	input_path = r"C:\Users\taaha\Downloads\1-55.dcm"
+	input_path = "C:/Users/taaha/Downloads/1-55.dcm"
 	image = pydicom.read_file(input_path).pixel_array
 
 	encoded_path = f'data/working/testing.{config["extension"]}'
@@ -71,11 +71,15 @@ def main():
 	print(f'\nReconstruction Error: {error}')
 
 	# Confirming that SHA hashes are the same
-	original_hash = hashlib.sha1(image.tobytes()).hexdigest()
+	original_hash  = hashlib.sha1(image.tobytes()).hexdigest()
 	recovered_hash = hashlib.sha1(output.tobytes()).hexdigest()
 
 	print(f'SHA1 Original Hash:  {original_hash}')
 	print(f'SHA1 Recovered Hash: {recovered_hash}')
+
+	# if original_hash != recovered_hash:
+	# 	error_positions = list(zip(*np.where(error_matrix != 0)))
+	# 	print(f'\nErrors found at positions {error_positions}')
 
 if __name__ == '__main__':
 	main()
