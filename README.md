@@ -20,9 +20,9 @@
 	- Revolutionizing Medical Imaging: Heuristic Fractal Pixel Segmentation for Secure, Lossless, and Efficient Compression of DICOM Images
 	- Fractal-based Pixel Segmentation for Enhanced Compression of DICOM Medical Imaging (FPE-DICOM)
 
-**CompaCT: Heuristic Fractal Pixel Segmentation for Secure Lossless High Color Depth CT Scan Compression**
+**CompaCT: Fractal-based Heuristic Pixel Segmentation for Enhanced Lossless Compression of High-Color DICOM Medical Imaging**
 
-**CompaCT: A Novel Application of Heuristic Fractal Pixel Segmentation for Secure Lossless High Color Depth CT Scan Compression**
+**CompaCT: Heuristic Fractal Pixel Segmentation for Lossless High Color Depth CT Scan Compression**
 
 ## Completed
 - Port QOI and Gilbert for python

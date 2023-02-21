@@ -14,7 +14,6 @@
 	
 		"end_of_file": 59,
 
-		"aes_encryption": false,
 		"deflate_compression": true,
 
 		"transforms" : {
@@ -31,8 +30,6 @@
 
 	"decoder": {
 
-		"secret_key": "5c644ee6a73206f8aec0bf5e5175e7bb",
-	
 		"decode_format": "png"
 
 	}

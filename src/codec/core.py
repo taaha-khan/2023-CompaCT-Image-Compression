@@ -27,7 +27,6 @@ SOFTWARE.
 from collections import defaultdict
 from tabulate import tabulate
 from PIL import Image
-import matplotlib.pyplot as plt
 import numpy as np
 import tqdm
 import json
@@ -148,7 +147,11 @@ class ByteReader:
 
 		out = self.bytes[self.read_pos]
 		self.read_pos += 1
+
 		return out
+
+	def peek(self):
+		return self.bytes[self.read_pos]
 
 	def read_4_bytes(self):
 		data = [self.read() for _ in range(4)]
@@ -464,37 +467,32 @@ class Decoder:
 			block = pixel_block[index]
 			completed[index] = True
 
+			# if 598 <= block <= 607:
+			# 	print(f'\tn={n} running={running} idx={index} run={run} | {block}')
+			
+			# if 15620 <= block <= 15622:
+			# 	print(f'\tn={n} running={running} idx={index} run={run} | {block}')
+			
+			# if run > 0:
+			# 	run -= 1
+			# 	output[index] = pixel.value
+			# 	prev_pixel.update(pixel.bytes)
+			# 	continue
+
 			# Next 32 pixel indexes are meshed with future
-			# if (self.reader.bytes[self.reader.read_pos] & Utils.MASK_JUMP) == Utils.TAG_JUMP:
+			if (self.reader.peek() & Utils.MASK_JUMP) == Utils.TAG_JUMP:
 				
-			# 	# Read next encoded data
-			# 	data = self.reader.read()
-			# 	jump = (~Utils.MASK_JUMP) & data
-
-			# 	print(f'mesh {block} + {jump} = {block + jump}')
-
-			# 	# Populate padded spaces with meshed block
-			# 	blockB = block_pixel_orders[block + jump]
-			# 	padded_order[running + 1 : running + 1 + 2 * self.config['block_size'] : 2] = blockB
-
-			if run > 0:
-				run -= 1
-				output[index] = pixel.value
-				prev_pixel.update(pixel.bytes)
-				continue
-
-			data = self.reader.read()
-		
-			# # Next 32 pixel indexes are meshed with future
-			if (data & Utils.MASK_JUMP) == Utils.TAG_JUMP:
-				jump = (~Utils.MASK_JUMP) & data
-				
-				# Populate padded spaces with meshed block
-				blockB = block_pixel_orders[block + jump]
-				padded_order[running + 1 : running + 1 + 32 : 2] = blockB
-
 				# Read next encoded data
 				data = self.reader.read()
+				jump = (~Utils.MASK_JUMP) & data
+
+				# print(f'n={n} running={running} idx={index} run={run} | mesh {block} + {jump:02} = {block + jump}')
+
+				# Populate padded spaces with meshed block
+				blockB = block_pixel_orders[block + jump]
+				padded_order[running + 1 : running + 1 + 2 * self.config['block_size'] : 2] = blockB
+
+			data = self.reader.read()
 		
 			# --------------------------------------------------------
 
@@ -508,8 +506,8 @@ class Decoder:
 
 				self.fulls.append(index)
 
-			elif (data & Utils.MASK_RUN) == Utils.TAG_RUN:
-				run = (data & ~Utils.MASK_RUN)
+			# elif (data & Utils.MASK_RUN) == Utils.TAG_RUN:
+			# 	run = ~Utils.MASK_RUN & data
 
 			elif (data & Utils.MASK_DELTA) == Utils.TAG_DELTA:
 				delta = signed(~Utils.MASK_DELTA & data, 7) # signed(data, 7)
@@ -529,10 +527,11 @@ class Decoder:
 			# preview = preview.flatten()
 			# preview = np.zeros(self.size, dtype = np.uint16)
 			# preview[self.fulls] = 60000
+
 			# preview = preview.reshape(self.width, self.height)
 
-			# preview[:, ::4] = 30000
-			# preview[::4, :] = 30000
+			# preview[:, ::8] = 40000
+			# preview[::8, :] = 40000
 
 			# NOTE: Writing to PNG is a time bottleneck
 			import imageio

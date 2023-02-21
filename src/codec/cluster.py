@@ -364,7 +364,7 @@ class BlockPartitioner:
 					meshed = True
 
 					num_skips += 1
-					print(f'mesh {i} + {next_index - i} = {next_index}')
+					# print(f'mesh {i} + {next_index - i} = {next_index}')
 
 					BLOCK_JUMPS[i] = next_index
 					
