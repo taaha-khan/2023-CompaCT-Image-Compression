@@ -34,7 +34,7 @@ import zlib
 import sys
 
 from codec.curve import GeneralizedHilbertCurve
-from codec.cluster import Partitioner, BlockPartitioner
+from codec.cluster import BlockPartitioner
 
 # Header byte tags
 class Utils:
@@ -60,7 +60,8 @@ def signed(x, n_bits):
 	return x
 
 def rescale(value):
-	return (value << 4) | (value >> 8)
+	# return (value << 4) | (value >> 8)
+	return (value << 4) | (0 >> 8)
 
 def unscale(value):
 	return value >> 4
@@ -210,8 +211,8 @@ class Encoder:
 
 	def encode(self):
 
-		if self.config['verbose']:
-			print(f'[QOI CORE ENCODER FORMAT]')
+		# if self.config['verbose']:
+		# 	print(f'[QOI CORE ENCODER FORMAT]')
 
 		self.raw_size = self.size * self.config['encoder']['channels'] * self.config['encoder']['bytes_per_channel']
 		if self.raw_size > 400_000_000_000:
@@ -267,8 +268,8 @@ class Encoder:
 			pixel_order, block_jumps = self.partition.block_partition()
 			# print(block_jumps)
 
-			if self.config['verbose']:
-				print(f'{len(block_jumps)} block jumps')
+			# if self.config['verbose']:
+			# 	print(f'{len(block_jumps)} block jumps')
 
 		n = -1
 		run = 0
@@ -331,7 +332,7 @@ class Encoder:
 		output = self.writer.output()
 
 		ratio = self.raw_size / len(output)
-		self.stats.append(['Initial', len(output) / 1000, ratio])
+		self.stats.append(['QOI', len(output) / 1000, ratio])
 
 		if self.config['encoder']['deflate_compression']:
 
@@ -527,7 +528,6 @@ class Decoder:
 			# preview = preview.flatten()
 			# preview = np.zeros(self.size, dtype = np.uint16)
 			# preview[self.fulls] = 60000
-
 			# preview = preview.reshape(self.width, self.height)
 
 			# preview[:, ::8] = 40000

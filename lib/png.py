@@ -3,8 +3,8 @@ import numpy as np
 import imageio
 
 def rescale(value):
-	# Scale to 16 bits and fill with 4 most significant bits
-	return (value << 4) | (value >> 8)
+	# return (value << 4) | (value >> 8) # Scale to 16 bits and fill with 4 most significant bits
+	return (value << 4) | (0 >> 8) # Scale to 16 bits and fill with 0
 
 def unscale(value):
 	return value >> 4
